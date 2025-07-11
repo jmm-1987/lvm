@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>115 Retención alquileres</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 0; }
+        .container { max-width: 950px; margin: 40px auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 36px 40px; }
+        h1 { color: #8e24aa; text-align: center; }
+        form { display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; margin-bottom: 30px; }
+        label { font-weight: bold; margin-right: 10px; }
+        input[type="date"] { padding: 8px; border-radius: 5px; border: 1px solid #b0bec5; margin: 0 10px; }
+        button, .menu-btn { padding: 10px 24px; background: #8e24aa; color: #fff; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; text-decoration:none; display:inline-block; }
+        button:hover, .menu-btn:hover { background: #6d1b7b; }
+        .resumen { background: #f7fafd; border-radius: 8px; padding: 18px 24px; margin-bottom: 24px; text-align: center; font-size: 1.2em; }
+        .alquiler-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+        .alquiler-table th, .alquiler-table td { padding: 8px 10px; border-bottom: 1px solid #e0e0e0; text-align: left; }
+        .alquiler-table th { background: #e3eaf2; }
+        .diferencia { font-size: 1.3em; font-weight: bold; text-align: right; margin-top: 18px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>115 Retención alquileres</h1>
+        <form method="post">
+            <label>Desde: <input type="date" name="fecha_inicio" required value="{{ fecha_inicio }}"></label>
+            <label>Hasta: <input type="date" name="fecha_fin" required value="{{ fecha_fin }}"></label>
+            <button type="submit">Ver resultado</button>
+            <a href="/" class="menu-btn" style="background:#e53935; color:#fff;">Volver al inicio</a>
+        </form>
+        {% if resultado is not none %}
+            <div class="resumen">
+                <span>Cuenta 47510000003 - RETENCIONES ALQUILERES</span>
+            </div>
+            <table class="alquiler-table">
+                <tr>
+                    <th>Código cuenta</th>
+                    <th>Nombre</th>
+                    <th>Importe</th>
+                </tr>
+                <tr>
+                    <td>47510000003</td>
+                    <td>RETENCIONES ALQUILERES</td>
+                    <td>{{ '%.2f'|format(resultado) if resultado != 0 else '' }}{% if resultado != 0 %} €{% endif %}</td>
+                </tr>
+            </table>
+            {% if desglose_contrapartidas %}
+            <div class="resumen" style="margin-top:40px;">
+                <span>Desglose por cuentas de contrapartida:</span>
+            </div>
+            <table class="alquiler-table">
+                <tr>
+                    <th>Contrapartida</th>
+                    <th>Nombre</th>
+                    <th>Importe</th>
+                </tr>
+                {% for c in desglose_contrapartidas %}
+                <tr>
+                    <td>{{ c.contrapartida }}</td>
+                    <td>{{ c.nombre }}</td>
+                    <td>{{ '%.2f'|format(c.importe) if c.importe != 0 else '' }}{% if c.importe != 0 %} €{% endif %}</td>
+                </tr>
+                {% endfor %}
+                <tr style="font-weight:bold; background:#e3eaf2;">
+                    <td colspan="2" style="text-align:right;">Total:</td>
+                    <td>{{ '%.2f'|format(total_importe) if total_importe != 0 else '' }}{% if total_importe != 0 %} €{% endif %}</td>
+                </tr>
+            </table>
+            {% endif %}
+        {% endif %}
+    </div>
+</body>
+</html> 

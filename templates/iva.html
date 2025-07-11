@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Resultado IVA</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 0; }
+        .container { max-width: 950px; margin: 40px auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 36px 40px; }
+        h1 { color: #fbc02d; text-align: center; }
+        form { display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; margin-bottom: 30px; }
+        label { font-weight: bold; margin-right: 10px; }
+        input[type="date"] { padding: 8px; border-radius: 5px; border: 1px solid #b0bec5; margin: 0 10px; }
+        button, .menu-btn { padding: 10px 24px; background: #fbc02d; color: #333; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; text-decoration:none; display:inline-block; }
+        button:hover, .menu-btn:hover { background: #ffe082; }
+        .resumen { background: #f7fafd; border-radius: 8px; padding: 18px 24px; margin-bottom: 24px; text-align: center; font-size: 1.2em; }
+        .iva-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+        .iva-table th, .iva-table td { padding: 8px 10px; border-bottom: 1px solid #e0e0e0; text-align: left; }
+        .iva-table th { background: #e3eaf2; }
+        .diferencia { font-size: 1.3em; font-weight: bold; text-align: right; margin-top: 18px; }
+        .negativo { color: #b71c1c; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Resultado IVA</h1>
+        <form method="post" style="display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;">
+            <label>Desde: <input type="date" name="fecha_inicio" required value="{{ fecha_inicio }}"></label>
+            <label>Hasta: <input type="date" name="fecha_fin" required value="{{ fecha_fin }}"></label>
+            <label style="font-weight:normal; margin-bottom:0; margin-left:10px; display:inline-flex; align-items:center;">
+                <input type="checkbox" name="desglose" value="1" {% if desglose_checked %}checked{% endif %} style="margin-right:5px;"> Mostrar desglose por cuentas de contrapartida
+            </label>
+            <button type="submit">Ver resultado</button>
+            <a href="/" class="menu-btn" style="background:#e53935; color:#fff; text-decoration:none; padding:10px 24px; border-radius:6px; display:inline-block; border:none; font-size:1em;">Volver al inicio</a>
+        </form>
+        {% if resultado is not none %}
+            <div class="resumen">
+                <span>Detalle de cuentas de IVA:</span>
+            </div>
+            <table class="iva-table">
+                <tr>
+                    <th>Código cuenta</th>
+                    <th>Nombre</th>
+                    <th>Importe</th>
+                </tr>
+                <tr>
+                    <td>47700000001</td>
+                    <td>H.P. IVA REPERCUTIDO</td>
+                    <td>{{ '%.2f'|format(iva_repercutido) if iva_repercutido != 0 else '' }}{% if iva_repercutido != 0 %} €{% endif %}</td>
+                </tr>
+                <tr>
+                    <td>47200000001</td>
+                    <td>H.P. IVA SOPORTADO</td>
+                    <td>{{ '%.2f'|format(iva_soportado) if iva_soportado != 0 else '' }}{% if iva_soportado != 0 %} €{% endif %}</td>
+                </tr>
+            </table>
+            <div class="diferencia" style="font-size:1.5em; color:#1976d2; margin-top:30px;">
+                IVA a pagar/cobrar: <span class="{% if resultado < 0 %}negativo{% endif %}">{{ '%.2f'|format(resultado) }} €</span>
+            </div>
+            {% if desglose_contrapartidas %}
+            <div class="resumen" style="margin-top:40px;">
+                <span>Desglose por cuentas de contrapartida:</span>
+            </div>
+            <table class="iva-table">
+                <tr>
+                    <th>Contrapartida</th>
+                    <th>Nombre</th>
+                    <th>IVA Repercutido</th>
+                    <th>IVA Soportado</th>
+                </tr>
+                {% for c in desglose_contrapartidas %}
+                <tr>
+                    <td>{{ c.contrapartida }}</td>
+                    <td>{{ c.nombre }}</td>
+                    <td>{{ '%.2f'|format(c.iva_repercutido) if c.iva_repercutido != 0 else '' }}{% if c.iva_repercutido != 0 %} €{% endif %}</td>
+                    <td>{{ '%.2f'|format(c.iva_soportado) if c.iva_soportado != 0 else '' }}{% if c.iva_soportado != 0 %} €{% endif %}</td>
+                </tr>
+                {% endfor %}
+                <tr style="font-weight:bold; background:#e3eaf2;">
+                    <td colspan="2" style="text-align:right;">Total:</td>
+                    <td>{{ '%.2f'|format(total_repercutido) if total_repercutido != 0 else '' }}{% if total_repercutido != 0 %} €{% endif %}</td>
+                    <td>{{ '%.2f'|format(total_soportado) if total_soportado != 0 else '' }}{% if total_soportado != 0 %} €{% endif %}</td>
+                </tr>
+            </table>
+            {% endif %}
+        {% endif %}
+    </div>
+</body>
+</html> 

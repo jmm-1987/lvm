@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Resultado de explotación</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 0; }
+        .container { max-width: 950px; margin: 40px auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 36px 40px; }
+        h1 { color: #388e3c; text-align: center; }
+        form { display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; margin-bottom: 30px; }
+        label { font-weight: bold; margin-right: 10px; }
+        input[type="date"] { padding: 8px; border-radius: 5px; border: 1px solid #b0bec5; margin: 0 10px; }
+        button { padding: 10px 24px; background: #388e3c; color: #fff; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; text-decoration:none; display:inline-block; }
+        button:hover { background: #256029; }
+        .menu-btn { padding: 10px 24px; background: #e53935; color: #fff; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; text-decoration:none; display:inline-block; }
+        .menu-btn:hover { background: #b71c1c; }
+        .resumen { background: #f7fafd; border-radius: 8px; padding: 18px 24px; margin-bottom: 24px; text-align: center; font-size: 1.2em; }
+        .negativo { color: #b71c1c; font-weight: bold; }
+        .detalle-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+        .detalle-table th, .detalle-table td { padding: 8px 10px; border-bottom: 1px solid #e0e0e0; text-align: left; }
+        .detalle-table th { background: #e3eaf2; }
+        .diferencia { font-size: 1.3em; font-weight: bold; text-align: right; margin-top: 18px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Resultado de explotación</h1>
+        <form method="post">
+            <label>Desde: <input type="date" name="fecha_inicio" required value="{{ fecha_inicio }}"></label>
+            <label>Hasta: <input type="date" name="fecha_fin" required value="{{ fecha_fin }}"></label>
+            <button type="submit">Ver resultado</button>
+            <a href="/" class="menu-btn">Volver al inicio</a>
+        </form>
+        {% if resultado is not none %}
+            <div class="resumen">
+                <span>Detalle cuentas 7:</span>
+            </div>
+            <table class="detalle-table">
+                <tr>
+                    <th>Código cuenta</th>
+                    <th>Nombre</th>
+                    <th>Importe</th>
+                </tr>
+                {% for d in detalle if d.cuenta.startswith('7') %}
+                <tr>
+                    <td>{{ d.cuenta }}</td>
+                    <td>{{ d.nombre }}</td>
+                    <td class="{% if d.importe < 0 %}negativo{% endif %}">{{ '%.2f'|format(d.importe) }} €</td>
+                </tr>
+                {% endfor %}
+            </table>
+            <div class="resumen">
+                <span>Detalle otras cuentas:</span>
+            </div>
+            <table class="detalle-table">
+                <tr>
+                    <th>Código cuenta</th>
+                    <th>Nombre</th>
+                    <th>Importe</th>
+                </tr>
+                {% for d in detalle if not d.cuenta.startswith('7') %}
+                <tr>
+                    <td>{{ d.cuenta }}</td>
+                    <td>{{ d.nombre }}</td>
+                    <td class="{% if d.importe < 0 %}negativo{% endif %}">{{ '%.2f'|format(d.importe) }} €</td>
+                </tr>
+                {% endfor %}
+            </table>
+            <div class="diferencia">
+             Gastos fijos: <span>{{ '%.2f'|format(diferencia) }} €</span>
+            </div>
+            <div class="diferencia" style="font-size:1.5em; color:#1976d2; margin-top:30px;">
+                Resultado de la explotación: <span class="{% if resultado_explotacion is not none and resultado_explotacion < 0 %}negativo{% endif %}">{{ '%.2f'|format(resultado_explotacion) }} €</span>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html> 

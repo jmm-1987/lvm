@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Movimientos</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 0;
+        }
+        h1 {
+            color: #1976d2;
+            text-align: center;
+            margin-top: 30px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 30px;
+        }
+        .search-box {
+            margin-bottom: 20px;
+            text-align: right;
+        }
+        .search-input {
+            padding: 8px 12px;
+            font-size: 1em;
+            border: 1px solid #b0bec5;
+            border-radius: 5px;
+            width: 300px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px 10px;
+            text-align: left;
+        }
+        th {
+            background: #1976d2;
+            color: #fff;
+        }
+        tr:nth-child(even) {
+            background: #f0f4f8;
+        }
+        td.valor {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        a.menu-btn, .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 10px 0;
+            font-size: 1em;
+            background-color: #1976d2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        a.menu-btn:hover, .btn:hover {
+            background-color: #1565c0;
+        }
+        .acciones a {
+            margin-right: 10px;
+        }
+        .volver-btn { background-color: #e53935 !important; color: #fff !important; }
+        .volver-btn:hover { background-color: #b71c1c !important; }
+    </style>
+    <script>
+        function filtrarTabla() {
+            var input = document.getElementById('busqueda');
+            var filtro = input.value.toLowerCase();
+            var filas = document.querySelectorAll('#tabla-movimientos tbody tr');
+            for (let i = 0; i < filas.length; i++) {
+                let fila = filas[i];
+                // Solo procesar filas principales (las que no tienen colspan)
+                if (fila.children.length > 1) {
+                    var texto = fila.textContent.toLowerCase();
+                    var mostrar = texto.includes(filtro);
+                    fila.style.display = mostrar ? '' : 'none';
+                    // Si la siguiente fila es de detalles (colspan), mostrarla solo si la principal está visible
+                    if (i + 1 < filas.length && filas[i + 1].children.length === 1 && filas[i + 1].children[0].hasAttribute('colspan')) {
+                        filas[i + 1].style.display = mostrar ? '' : 'none';
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Listado de movimientos</h1>
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <a href="/movimientos/nuevo" class="menu-btn">Nuevo movimiento</a>
+            <a href="/" class="menu-btn volver-btn">Volver al inicio</a>
+        </div>
+        <div class="search-box">
+            <input type="text" id="busqueda" class="search-input" placeholder="Buscar movimiento..." onkeyup="filtrarTabla()">
+        </div>
+        <table id="tabla-movimientos">
+            <tr>
+                <th>Tipo</th>
+                <th>Fecha trabajo</th>
+                <th>Fecha factura</th>
+                <th>Num/factura</th>
+                <th>Importe</th>
+                <th>Total</th>
+                <th>Contrapartida</th>
+                <th>Acciones</th>
+            </tr>
+            <tbody>
+            {% for mov in movimientos %}
+            <tr style="background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.07); border-radius: 10px 10px 0 0; border-top: 2px solid #1976d2;">
+                <td style="border-left: 6px solid #1976d2;">{{ mov.tipo }}</td>
+                <td>{{ mov.fecha_trabajo }}</td>
+                <td>{{ mov.fecha_factura }}</td>
+                <td>{{ mov.num_factura }}</td>
+                <td class="valor">{{ '%.2f'|format(mov.base_imponible|default(0))|replace(',', '.')|replace('.', ',') }}</td>
+                <td class="valor"><strong>{{ '%.2f'|format(mov.total|default(0))|replace(',', '.')|replace('.', ',') }}</strong></td>
+                <td>
+                    {% if contrapartida_por_mov[mov.id] %}
+                        <span style="font-size:0.95em; color:#b71c1c; font-weight:bold;">{{ contrapartida_por_mov[mov.id].cuenta }} - {{ contrapartida_por_mov[mov.id].nombre }}</span><br>
+                 <!-- <span style="font-size:1.1em; font-weight:bold;">{{ '%.2f'|format(mov.total|default(0)) }} €</span>-->
+                    {% else %}
+                        <span style="color:#bbb;">Sin contrapartida</span>
+                    {% endif %}
+                </td>
+                <td class="acciones">
+                    <div>
+                        <a href="/movimientos/editar/{{ mov.id }}" class="btn">Editar</a>
+                        <form action="/movimientos/borrar/{{ mov.id }}" method="post" style="display:inline;" onsubmit="return confirm('¿Seguro que quieres borrar este movimiento?');">
+                          <button type="submit" style="background:#e53935; color:#fff; border:none; border-radius:6px; padding:8px 16px; margin-left:8px; cursor:pointer;">Borrar</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% if conceptos_por_mov[mov.id] %}
+            <tr style="background: #f7fafd; border-radius: 0 0 10px 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
+                <td colspan="7" style="padding-left:40px; border-bottom: 2px solid #e3eaf2;">
+                    <ul style="margin:0; padding:0; list-style:none;">
+                    {% for c in conceptos_por_mov[mov.id] %}
+                        {% if not contrapartida_por_mov[mov.id] or c.cuenta_id != contrapartida_por_mov[mov.id].id %}
+                            <li><strong>{{ c.cuenta.cuenta }}</strong> - {{ c.cuenta.nombre }}: {{ '%.2f'|format(c.importe) }} € {% if c.concepto %} <em>({{ c.concepto }})</em>{% endif %}</li>
+                        {% endif %}
+                    {% endfor %}
+                    </ul>
+                </td>
+            </tr>
+            {% endif %}
+            <tr style="height: 18px;"><td colspan="8" style="background: none; border: none;"></td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html> 

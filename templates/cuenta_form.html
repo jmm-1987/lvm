@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Cuenta</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 0; }
+        .container { max-width: 500px; margin: 50px auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 30px 40px; }
+        h1 { color: #1976d2; text-align: center; }
+        label { display: block; margin: 18px 0 8px 0; font-weight: bold; }
+        input[type="text"] { width: 100%; padding: 10px; border: 1px solid #b0bec5; border-radius: 5px; font-size: 1em; }
+        .flex-linea { display: flex; gap: 20px; }
+        .flex-linea > div { flex: 1; }
+        button, .menu-btn { display: inline-block; padding: 10px 20px; margin: 20px 0 0 0; font-size: 1em; background-color: #1976d2; color: white; border: none; border-radius: 6px; text-decoration: none; transition: background 0.2s; cursor: pointer; }
+        button:hover, .menu-btn:hover { background-color: #1565c0; }
+        .actions { text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{% if cuenta %}Editar{% else %}Nueva{% endif %} cuenta</h1>
+        <form method="post">
+            <div class="flex-linea">
+                <div>
+                    <label>Cuenta:
+                        <input type="text" name="cuenta" value="{{ cuenta.cuenta if cuenta else '' }}" required>
+                    </label>
+                </div>
+            </div>
+            <label for="nombre">Nombre:</label>
+            <input type="text" id="nombre" name="nombre" value="{{ cuenta.nombre if cuenta else '' }}" required><br>
+
+            <label for="tipo">Tipo de cuenta:</label>
+            <select name="tipo" id="tipo" required onchange="mostrarAsociada()">
+              <option value="normal" {% if cuenta and cuenta.tipo == 'normal' %}selected{% endif %}>Normal</option>
+              <option value="contrapartida" {% if cuenta and cuenta.tipo == 'contrapartida' %}selected{% endif %}>Contrapartida</option>
+            </select><br>
+            <div id="asociada-div" style="display: {% if cuenta and cuenta.tipo == 'contrapartida' %}block{% else %}none{% endif %};">
+              <label for="cuenta_asociada_id">Cuenta asociada:</label>
+              <select name="cuenta_asociada_id" id="cuenta_asociada_id">
+                <option value="">Selecciona cuenta asociada</option>
+                {% for c in cuentas_normales %}
+                  <option value="{{ c.id }}" {% if cuenta and cuenta.cuenta_asociada_id == c.id %}selected{% endif %}>{{ c.cuenta }}{{ c.subcuenta }} - {{ c.nombre }}</option>
+                {% endfor %}
+              </select><br>
+            </div>
+            <script>
+              function mostrarAsociada() {
+                var tipo = document.getElementById('tipo').value;
+                document.getElementById('asociada-div').style.display = (tipo === 'contrapartida') ? 'block' : 'none';
+              }
+            </script>
+            <label for="anotaciones">Anotaciones:</label>
+            <input type="text" id="anotaciones" name="anotaciones" value="{{ cuenta.anotaciones if cuenta else '' }}"><br>
+            <div class="actions">
+                <button type="submit">Guardar</button>
+                <a href="/cuentas" class="menu-btn">Volver al listado</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html> 

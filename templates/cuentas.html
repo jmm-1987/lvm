@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Cuentas</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 0;
+        }
+        h1 {
+            color: #1976d2;
+            text-align: center;
+            margin-top: 30px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 30px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px 10px;
+            text-align: left;
+        }
+        th {
+            background: #1976d2;
+            color: #fff;
+        }
+        tr:nth-child(even) {
+            background: #f0f4f8;
+        }
+        a.menu-btn, .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 10px 0;
+            font-size: 1em;
+            background-color: #1976d2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        a.menu-btn:hover, .btn:hover {
+            background-color: #1565c0;
+        }
+        .acciones a {
+            margin-right: 10px;
+        }
+        .volver-btn { background-color: #e53935 !important; color: #fff !important; }
+        .volver-btn:hover { background-color: #b71c1c !important; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Listado de cuentas</h1>
+        <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center;">
+            <a href="/cuentas/nueva" class="menu-btn">Nueva cuenta</a>
+            <a href="/" class="menu-btn volver-btn">Volver al inicio</a>
+            <div class="search-box" style="margin-left: auto;">
+                <input type="text" id="busqueda-cuentas" class="search-input" placeholder="Buscar cuenta..." onkeyup="filtrarTablaCuentas()">
+            </div>
+        </div>
+        <h2>Cuentas</h2>
+        <table>
+          <tr>
+            <th>Código</th>
+            <th>Nombre</th>
+            <th>Anotaciones</th>
+            <th>Acciones</th>
+          </tr>
+          {% for cuenta in cuentas_normales %}
+            <tr>
+              <td>{{ cuenta.cuenta }}</td>
+              <td>{{ cuenta.nombre }}</td>
+              <td>{{ cuenta.anotaciones or '' }}</td>
+              <td>
+                <a href="/cuentas/editar/{{ cuenta.id }}">Editar</a>
+                <form action="/cuentas/borrar/{{ cuenta.id }}" method="post" style="display:inline;" onsubmit="return confirm('¿Seguro que quieres borrar esta cuenta?');">
+                  <button type="submit" style="background:#e53935; color:#fff; border:none; border-radius:6px; padding:8px 16px; margin-left:8px; cursor:pointer;">Borrar</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </table>
+
+        <h2>Cuentas de contrapartida</h2>
+        <table>
+          <tr>
+            <th>Código</th>
+            <th>Nombre</th>
+            <th>Anotaciones</th>
+            <th>Acciones</th>
+          </tr>
+          {% for cuenta in cuentas_contrapartida %}
+            <tr>
+              <td>{{ cuenta.cuenta }}</td>
+              <td>{{ cuenta.nombre }}</td>
+              <td>{{ cuenta.anotaciones or '' }}</td>
+              <td>
+                <a href="/cuentas/editar/{{ cuenta.id }}">Editar</a>
+                <form action="/cuentas/borrar/{{ cuenta.id }}" method="post" style="display:inline;" onsubmit="return confirm('¿Seguro que quieres borrar esta cuenta?');">
+                  <button type="submit" style="background:#e53935; color:#fff; border:none; border-radius:6px; padding:8px 16px; margin-left:8px; cursor:pointer;">Borrar</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </table>
+    </div>
+    <script>
+        function filtrarTablaCuentas() {
+            var input = document.getElementById('busqueda-cuentas');
+            var filtro = input.value.toLowerCase();
+            document.querySelectorAll('table').forEach(function(tabla) {
+                tabla.querySelectorAll('tbody tr').forEach(function(tr) {
+                    var texto = tr.textContent.toLowerCase();
+                    tr.style.display = texto.includes(filtro) ? '' : 'none';
+                });
+            });
+        }
+    </script>
+</body>
+</html> 

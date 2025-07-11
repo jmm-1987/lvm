@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Movimiento</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 0; }
+        .container { max-width: 1100px; margin: 50px auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 30px 40px; }
+        h1 { color: #1976d2; text-align: center; }
+        label { display: block; margin: 18px 0 8px 0; font-weight: bold; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #b0bec5; border-radius: 5px; font-size: 1em; }
+        .fechas-flex { display: flex; gap: 20px; }
+        .fechas-flex > div { flex: 1; }
+        .conceptos-table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+        .conceptos-table th, .conceptos-table td { padding: 8px; border-bottom: 1px solid #e0e0e0; }
+        .conceptos-table td.importe-cell, .conceptos-table th.importe-cell { width: 110px; min-width: 90px; max-width: 130px; }
+        .conceptos-table input[type='number'] { width: 90px; min-width: 70px; max-width: 120px; }
+        .add-btn, .remove-btn, button, .menu-btn { display: inline-block; padding: 8px 16px; margin: 10px 0; font-size: 1em; background-color: #1976d2; color: white; border: none; border-radius: 6px; text-decoration: none; transition: background 0.2s; cursor: pointer; }
+        .add-btn:hover, .remove-btn:hover, button:hover, .menu-btn:hover { background-color: #1565c0; }
+        .remove-btn { background-color: #e53935; }
+        .remove-btn:hover { background-color: #b71c1c; }
+        .actions { text-align: center; }
+        .total-box { font-size: 1.2em; font-weight: bold; margin-top: 20px; text-align: right; }
+        .autocomplete-items { position: absolute; border: 1px solid #b0bec5; border-top: none; z-index: 99; background: #fff; max-height: 200px; overflow-y: auto; width: 100%; }
+        .autocomplete-item { padding: 10px; cursor: pointer; }
+        .autocomplete-item:hover { background: #e3f2fd; }
+        .concepto-cell { position: relative; }
+    </style>
+    <script>
+        const cuentasNormales = [
+            {% for cuenta in cuentas_normales %}
+            {id: '{{cuenta.id}}', texto: '{{cuenta.cuenta}} - {{cuenta.nombre}}'},
+            {% endfor %}
+        ];
+        const cuentasContrapartida = [
+            {% for cuenta in cuentas_contrapartida %}
+            {id: '{{cuenta.id}}', texto: '{{cuenta.cuenta}} - {{cuenta.nombre}}', asociada: '{{cuenta.cuenta_asociada_id or ''}}'},
+            {% endfor %}
+        ];
+        let conceptoIdx = 0;
+        function addConcepto(cuenta_id = '', cuenta_texto = '', contrapartida_id = '', contrapartida_texto = '', importe = '', concepto = '') {
+            const table = document.getElementById('conceptos-body');
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="concepto-cell">
+                    <input type="text" name="cuenta_texto_${conceptoIdx}" placeholder="Buscar cuenta..." autocomplete="off" value="${cuenta_texto}" oninput="showAutocompleteCuenta(this, ${conceptoIdx})" onfocus="showAutocompleteCuenta(this, ${conceptoIdx})" required>
+                    <input type="hidden" name="cuenta_${conceptoIdx}" value="${cuenta_id}">
+                    <div class="autocomplete-items" id="autocomplete-cuenta-${conceptoIdx}" style="display:none;"></div>
+                </td>
+                <td class="concepto-cell">
+                    <input type="text" name="contrapartida_texto_${conceptoIdx}" placeholder="Buscar contrapartida..." autocomplete="off" value="${contrapartida_texto}" oninput="showAutocompleteContrapartida(this, ${conceptoIdx})" onfocus="showAutocompleteContrapartida(this, ${conceptoIdx})" required data-idx="${conceptoIdx}">
+                    <input type="hidden" name="contrapartida_${conceptoIdx}" value="${contrapartida_id}">
+                    <div class="autocomplete-items" id="autocomplete-contrapartida-${conceptoIdx}" style="display:none;"></div>
+                </td>
+                <td><input type="number" name="importe_${conceptoIdx}" step="0.01" value="${importe}" required onchange="sumarTotal()" class="importe-cell"></td>
+                <td><input type="text" name="concepto_${conceptoIdx}" value="${concepto}" placeholder="Concepto opcional"></td>
+                <td><button type="button" class="remove-btn" onclick="removeConcepto(this)">-</button></td>
+            `;
+            table.appendChild(row);
+            // Añadir evento para autocompletar cuenta asociada al seleccionar contrapartida
+            setTimeout(function() {
+                const contrapartidaInput = row.querySelector(`input[name='contrapartida_texto_${conceptoIdx}']`);
+                const cuentaInput = row.querySelector(`input[name='cuenta_texto_${conceptoIdx}']`);
+                contrapartidaInput.addEventListener('change', function() {
+                    // Solo autocompletar si el campo cuenta está vacío
+                    if (cuentaInput.value === '') {
+                        autocompletarCuentaAsociada(contrapartidaInput, conceptoIdx);
+                    }
+                });
+            }, 0);
+            conceptoIdx++;
+            sumarTotal();
+        }
+        function showAutocompleteCuenta(input, idx) {
+            const val = input.value.toLowerCase();
+            const list = document.getElementById('autocomplete-cuenta-' + idx);
+            list.innerHTML = '';
+            if (!val) { list.style.display = 'none'; return; }
+            let count = 0;
+            cuentasNormales.forEach(c => {
+                if (c.texto.toLowerCase().includes(val)) {
+                    const item = document.createElement('div');
+                    item.className = 'autocomplete-item';
+                    item.textContent = c.texto;
+                    item.onmousedown = function(e) {
+                        e.preventDefault();
+                        input.value = c.texto;
+                        document.querySelector(`input[name='cuenta_${idx}']`).value = c.id;
+                        list.style.display = 'none';
+                    };
+                    list.appendChild(item);
+                    count++;
+                }
+            });
+            list.style.display = count ? 'block' : 'none';
+        }
+        function showAutocompleteContrapartida(input, idx) {
+            const val = input.value.toLowerCase();
+            const list = document.getElementById('autocomplete-contrapartida-' + idx);
+            list.innerHTML = '';
+            if (!val) { list.style.display = 'none'; return; }
+            let count = 0;
+            cuentasContrapartida.forEach(c => {
+                if (c.texto.toLowerCase().includes(val)) {
+                    const item = document.createElement('div');
+                    item.className = 'autocomplete-item';
+                    item.textContent = c.texto;
+                    item.onmousedown = function(e) {
+                        e.preventDefault();
+                        input.value = c.texto;
+                        document.querySelector(`input[name='contrapartida_${idx}']`).value = c.id;
+                        // Autocompletar cuenta asociada si el campo cuenta está vacío
+                        const cuentaInput = document.querySelector(`input[name='cuenta_texto_${idx}']`);
+                        if (cuentaInput && cuentaInput.value === '') {
+                            autocompletarCuentaAsociada(input, idx);
+                        }
+                        list.style.display = 'none';
+                    };
+                    list.appendChild(item);
+                    count++;
+                }
+            });
+            list.style.display = count ? 'block' : 'none';
+        }
+        function removeConcepto(btn) {
+            btn.closest('tr').remove();
+            sumarTotal();
+        }
+        function sumarTotal() {
+            let total = 0;
+            document.querySelectorAll('input[name^="importe_"').forEach(input => {
+                total += parseFloat(input.value) || 0;
+            });
+            document.getElementById('total').value = total.toFixed(2);
+            document.getElementById('total-box').innerText = 'Total: ' + total.toFixed(2) + ' €';
+        }
+        function autocompletarCuentaAsociada(contrapartidaInput, idx) {
+            const texto = contrapartidaInput.value;
+            const cuentaObj = cuentasContrapartida.find(c => c.texto === texto);
+            if (cuentaObj && cuentaObj.asociada) {
+                // Buscar el objeto de la cuenta normal asociada
+                const cuentaNormal = cuentasNormales.find(c => c.id === cuentaObj.asociada);
+                if (cuentaNormal) {
+                    // Autocompletar el campo de cuenta
+                    const cuentaInput = document.querySelector(`input[name='cuenta_texto_${idx}']`);
+                    const cuentaHidden = document.querySelector(`input[name='cuenta_${idx}']`);
+                    cuentaInput.value = cuentaNormal.texto;
+                    cuentaHidden.value = cuentaNormal.id;
+                }
+            }
+        }
+        window.onload = function() {
+            // Sincronizar fecha de trabajo con fecha de factura si se selecciona antes la de factura
+            var fechaFactura = document.querySelector('input[name="fecha_factura"]');
+            var fechaTrabajo = document.querySelector('input[name="fecha_trabajo"]');
+            fechaFactura.addEventListener('change', function() {
+                if (!fechaTrabajo.value) {
+                    fechaTrabajo.value = fechaFactura.value;
+                }
+            });
+            {% if conceptos %}
+                {% for c in conceptos %}
+                    addConcepto(
+                        "{{c.cuenta_id}}",
+                        "{{c.cuenta.cuenta}} - {{c.cuenta.nombre}}",
+                        "{{c.contrapartida_id}}",
+                        "{% if c.contrapartida %}{{c.contrapartida.cuenta}} - {{c.contrapartida.nombre}}{% endif %}",
+                        "{{c.importe}}",
+                        "{{c.concepto|default('')}}"
+                    );
+                {% endfor %}
+            {% else %}
+                addConcepto();
+            {% endif %}
+        };
+        document.addEventListener('mousedown', function(e) {
+            document.querySelectorAll('.autocomplete-items').forEach(function(list) {
+                if (!list.contains(e.target) && !(e.target.matches('input[name^="cuenta_"]')) && !(e.target.matches('input[name^="contrapartida_"]'))) {
+                    list.style.display = 'none';
+                }
+            });
+        });
+    </script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelector('form').addEventListener('submit', function(e) {
+            let idx = 0;
+            let ok = true;
+            while (true) {
+                const input = document.querySelector(`input[name='contrapartida_${idx}']`);
+                if (!input) break;
+                if (!input.value) {
+                    ok = false;
+                    break;
+                }
+                idx++;
+            }
+            if (!ok) {
+                alert('Debes seleccionar una cuenta de contrapartida en todas las líneas.');
+                e.preventDefault();
+            }
+        });
+    });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>{% if movimiento %}Editar{% else %}Nuevo{% endif %} movimiento</h1>
+        <form method="post">
+            <div style="display: flex; gap: 10px; align-items: flex-end;">
+                <div style="flex: 1;">
+                    <label>Tipo:
+                        <select name="tipo" required>
+                            <option value="Gasto" {% if not movimiento or (movimiento and movimiento.tipo == 'Gasto') %}selected{% endif %}>Gasto</option>
+                            <option value="Ingreso" {% if movimiento and movimiento.tipo == 'Ingreso' %}selected{% endif %}>Ingreso</option>
+                        </select>
+                    </label>
+                </div>
+                <div style="flex: 1;">
+                    <label>Fecha trabajo:
+                        <input type="date" name="fecha_trabajo" required value="{{ movimiento.fecha_trabajo if movimiento else '' }}">
+                    </label>
+                </div>
+                <div style="flex: 1;">
+                    <label>Fecha factura:
+                        <input type="date" name="fecha_factura" required value="{{ movimiento.fecha_factura if movimiento else '' }}">
+                    </label>
+                </div>
+            </div>
+            <div style="margin-top: 20px;">
+                <label>Num/factura:
+                    <input type="text" name="num_factura" required value="{{ movimiento.num_factura if movimiento else '' }}">
+                </label>
+            </div>
+            <!-- Tabla de conceptos con cuenta y contrapartida por línea -->
+            <table class="conceptos-table">
+                <thead>
+                    <tr>
+                        <th>Cuenta</th>
+                        <th>Contrapartida</th>
+                        <th class="importe-cell">Importe</th>
+                        <th>Concepto</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="conceptos-body">
+                </tbody>
+            </table>
+            <button type="button" class="add-btn" onclick="addConcepto()">+ Añadir concepto</button>
+            <div class="total-box" id="total-box">Total: 0.00 €</div>
+            <input type="hidden" name="total" id="total" value="0">
+            <div class="actions">
+                <button type="submit">Guardar</button>
+                <a href="/movimientos" class="menu-btn">Volver al listado</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html> 
