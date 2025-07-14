@@ -1,3 +1,6 @@
 Flask==3.0.3
 Flask-SQLAlchemy==3.1.1 
 gunicorn 
+APScheduler 
+Flask-Login
+Werkzeug 

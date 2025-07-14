@@ -2,6 +2,10 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 from flask_sqlalchemy import SQLAlchemy
 import os
 from datetime import datetime, date
+from ftplib import FTP
+from apscheduler.schedulers.background import BackgroundScheduler
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = 'pon_aqui_una_clave_secreta_larga_y_unica'
@@ -46,6 +50,52 @@ class MovimientoConcepto(db.Model):
     contrapartida = db.relationship('Cuenta', foreign_keys=[contrapartida_id]) # Relación con la cuenta de contrapartida
 
 Movimiento.conceptos = db.relationship('MovimientoConcepto', backref='movimiento', cascade='all, delete-orphan')
+
+# Eliminar el modelo Usuario y la tabla de usuarios
+# Definir un usuario en memoria para Flask-Login
+class UsuarioFalso(UserMixin):
+    def __init__(self, id):
+        self.id = id
+        self.username = 'lvm'
+
+# Configuración de Flask-Login
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+login_manager.init_app(app)
+
+@login_manager.user_loader
+def load_user(user_id):
+    if user_id == 'lvm':
+        return UsuarioFalso('lvm')
+    return None
+
+# Ruta de login
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        lvm_password = os.environ.get('LVM_PASSWORD')
+        if username == 'lvm' and lvm_password and password == lvm_password:
+            user = UsuarioFalso('lvm')
+            login_user(user)
+            return redirect(url_for('index'))
+        else:
+            flash('Usuario o contraseña incorrectos', 'error')
+    return render_template('login.html')
+
+# Ruta de logout
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+# Proteger todas las rutas excepto login y static
+@app.before_request
+def require_login():
+    if request.endpoint not in ('login', 'static') and not current_user.is_authenticated:
+        return redirect(url_for('login'))
 
 @app.route('/')
 def index():
@@ -471,6 +521,31 @@ def descargar_db():
     fecha = datetime.now().strftime('%Y%m%d')
     nombre_archivo = f'lvm{fecha}.db'
     return send_file(db_path, as_attachment=True, download_name=nombre_archivo)
+
+# Función para subir la base de datos al FTP
+
+def subir_db_a_ftp():
+    ftp_host = os.environ.get('FTP_HOST')
+    ftp_user = os.environ.get('FTP_USER')
+    ftp_pass = os.environ.get('FTP_PASS')
+    ftp_dir = os.environ.get('FTP_DIR', '/')
+    db_path = os.path.join(os.path.dirname(__file__), 'app.db')
+    try:
+        with FTP(ftp_host) as ftp:
+            ftp.login(user=ftp_user, passwd=ftp_pass)
+            ftp.cwd(ftp_dir)
+            with open(db_path, 'rb') as f:
+                ftp.storbinary(f'STOR app.db', f)
+        print('Backup de la base de datos subido al FTP.')
+    except Exception as e:
+        print(f'Error al subir el backup al FTP: {e}')
+
+def tarea_backup_ftp():
+    subir_db_a_ftp()
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(tarea_backup_ftp, 'cron', hour=21, minute=0)
+scheduler.start()
 
 if __name__ == '__main__':
     with app.app_context():
