@@ -18,6 +18,7 @@
             padding: 48px 40px 36px 40px;
             text-align: center;
             min-width: 350px;
+            position: relative;
         }
         h1 {
             color: #1976d2;
@@ -49,6 +50,23 @@
             font-weight: bold;
             margin-bottom: 18px;
         }
+        .logout-btn {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            background: #d32f2f;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 18px;
+            font-size: 15px;
+            cursor: pointer;
+            z-index: 10;
+            transition: background 0.2s;
+        }
+        .logout-btn:hover {
+            background: #b71c1c;
+        }
     </style>
 </head>
 <body>
@@ -56,6 +74,11 @@
         <h1>Bienvenido a la gestión contable</h1>
         <a href="/cuentas" class="menu-btn">Gestión de cuentas</a>
         <a href="/movimientos" class="menu-btn">Gestión de movimientos</a>
+        {% if current_user.is_authenticated %}
+            <form action="{{ url_for('logout') }}" method="post" style="position:absolute; top:0; right:0;">
+                <button type="submit" class="logout-btn">Cerrar sesión</button>
+            </form>
+        {% endif %}
         <div class="informes-block">
             <div class="informes-title">Informes</div>
             <a href="/resultado_explotacion" class="menu-btn" style="background:#388e3c;">Resultado de explotación</a>

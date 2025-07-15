@@ -75,7 +75,8 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        lvm_password = os.environ.get('LVM_PASSWORD')
+        #lvm_password = os.environ.get('LVM_PASSWORD')
+        lvm_password = "1"
         if username == 'lvm' and lvm_password and password == lvm_password:
             user = UsuarioFalso('lvm')
             login_user(user)
@@ -85,9 +86,10 @@ def login():
     return render_template('login.html')
 
 # Ruta de logout
-@app.route('/logout')
+@app.route('/logout', methods=['GET', 'POST'])
 @login_required
 def logout():
+    subir_db_a_ftp()  # Subir la base de datos antes de cerrar sesión
     logout_user()
     return redirect(url_for('login'))
 
@@ -539,13 +541,6 @@ def subir_db_a_ftp():
         print('Backup de la base de datos subido al FTP.')
     except Exception as e:
         print(f'Error al subir el backup al FTP: {e}')
-
-def tarea_backup_ftp():
-    subir_db_a_ftp()
-
-scheduler = BackgroundScheduler()
-scheduler.add_job(tarea_backup_ftp, 'cron', hour=21, minute=0)
-scheduler.start()
 
 if __name__ == '__main__':
     with app.app_context():
