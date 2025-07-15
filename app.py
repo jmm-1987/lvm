@@ -75,8 +75,8 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        #lvm_password = os.environ.get('LVM_PASSWORD')
-        lvm_password = "1"
+        lvm_password = os.environ.get('LVM_PASSWORD')
+        #lvm_password = "1"
         if username == 'lvm' and lvm_password and password == lvm_password:
             user = UsuarioFalso('lvm')
             login_user(user)
