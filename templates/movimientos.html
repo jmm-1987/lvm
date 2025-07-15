@@ -137,6 +137,7 @@
                 <td class="acciones">
                     <div>
                         <a href="/movimientos/editar/{{ mov.id }}" class="btn">Editar</a>
+                        <a href="/movimientos/duplicar/{{ mov.id }}" class="btn" style="background:#43a047; color:#fff; margin-left:8px;">Duplicar</a>
                         <form action="/movimientos/borrar/{{ mov.id }}" method="post" style="display:inline;" onsubmit="return confirm('¿Seguro que quieres borrar este movimiento?');">
                           <button type="submit" style="background:#e53935; color:#fff; border:none; border-radius:6px; padding:8px 16px; margin-left:8px; cursor:pointer;">Borrar</button>
                         </form>

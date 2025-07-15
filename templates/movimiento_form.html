@@ -206,7 +206,7 @@
 <body>
     <div class="container">
         <h1>{% if movimiento %}Editar{% else %}Nuevo{% endif %} movimiento</h1>
-        <form method="post">
+        <form method="post" action="{{ url_for('nuevo_movimiento') }}">
             <div style="display: flex; gap: 10px; align-items: flex-end;">
                 <div style="flex: 1;">
                     <label>Tipo:

@@ -75,8 +75,8 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        lvm_password = os.environ.get('LVM_PASSWORD')
-        #lvm_password = "1"
+        #lvm_password = os.environ.get('LVM_PASSWORD')
+        lvm_password = "1"
         if username == 'lvm' and lvm_password and password == lvm_password:
             user = UsuarioFalso('lvm')
             login_user(user)
@@ -257,6 +257,25 @@ def borrar_movimiento(id):
     db.session.commit()
     flash('Movimiento borrado correctamente.', 'success')
     return redirect(url_for('listar_movimientos'))
+
+@app.route('/movimientos/duplicar/<int:id>', methods=['GET'])
+@login_required
+def duplicar_movimiento(id):
+    movimiento = Movimiento.query.get_or_404(id)
+    conceptos = MovimientoConcepto.query.filter_by(movimiento_id=movimiento.id).all()
+    cuentas_normales = Cuenta.query.filter_by(tipo='normal').all()
+    cuentas_contrapartida = Cuenta.query.filter_by(tipo='contrapartida').all()
+    # Preparamos un objeto similar al de edición pero con fechas y factura vacías
+    movimiento_clon = Movimiento(
+        tipo=movimiento.tipo,
+        fecha_trabajo='',
+        fecha_factura='',
+        num_factura='',
+        base_imponible=movimiento.base_imponible,
+        total=movimiento.total
+    )
+    # Pasamos los conceptos para que se muestren en el formulario
+    return render_template('movimiento_form.html', movimiento=movimiento_clon, conceptos=conceptos, cuentas_normales=cuentas_normales, cuentas_contrapartida=cuentas_contrapartida)
 
 @app.route('/resultado_explotacion', methods=['GET', 'POST'])
 def resultado_explotacion():
