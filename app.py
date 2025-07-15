@@ -532,6 +532,8 @@ def subir_db_a_ftp():
     sftp_pass = os.environ.get('FTP_PASS')
     sftp_dir = os.environ.get('FTP_DIR', '/')
     db_path = os.path.join(os.path.dirname(__file__), 'app.db')
+    fecha = datetime.now().strftime('%Y%m%d')
+    nombre_archivo = f'lvm{fecha}.db'
     if not sftp_host or not sftp_user or not sftp_pass:
         print('Faltan variables de entorno para la conexión SFTP.')
         return
@@ -539,11 +541,36 @@ def subir_db_a_ftp():
         transport = paramiko.Transport((sftp_host, 22))
         transport.connect(username=sftp_user, password=sftp_pass)
         sftp = paramiko.SFTPClient.from_transport(transport)
-        sftp.chdir(sftp_dir)
-        sftp.put(db_path, 'app.db')
+        # Intentar cambiar al directorio, si falla lo crea
+        try:
+            sftp.chdir(sftp_dir)
+        except IOError:
+            # Crear el directorio (soporta rutas anidadas)
+            dirs = sftp_dir.strip('/').split('/')
+            path = ''
+            for d in dirs:
+                path += '/' + d
+                try:
+                    sftp.chdir(path)
+                except IOError:
+                    sftp.mkdir(path)
+                    sftp.chdir(path)
+        # Listar archivos de backup existentes
+        archivos = sftp.listdir()
+        backups = sorted([f for f in archivos if f.startswith('lvm') and f.endswith('.db')])
+        # Si hay más de 2, borrar los más antiguos (dejar solo los 2 más recientes)
+        if len(backups) > 2:
+            for f in backups[:-2]:
+                try:
+                    sftp.remove(f)
+                    print(f'Backup antiguo eliminado: {f}')
+                except Exception as e:
+                    print(f'No se pudo eliminar {f}: {e}')
+        # Subir el nuevo backup
+        sftp.put(db_path, nombre_archivo)
         sftp.close()
         transport.close()
-        print('Backup de la base de datos subido por SFTP.')
+        print(f'Backup de la base de datos subido por SFTP como {nombre_archivo}.')
     except Exception as e:
         print(f'Error al subir el backup por SFTP: {e}')
 
