@@ -75,8 +75,8 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        #lvm_password = os.environ.get('LVM_PASSWORD')
-        lvm_password = "1"
+        lvm_password = os.environ.get('LVM_PASSWORD')
+        #lvm_password = "1"
         if username == 'lvm' and lvm_password and password == lvm_password:
             user = UsuarioFalso('lvm')
             login_user(user)
@@ -168,7 +168,20 @@ def listar_movimientos():
         else:
             contrapartida = None
         contrapartida_por_mov[mov.id] = contrapartida
-    return render_template('movimientos.html', movimientos=movimientos, conceptos_por_mov=conceptos_por_mov, contrapartida_por_mov=contrapartida_por_mov)
+    # Calcular fechas por defecto
+    hoy = date.today()
+    mes = hoy.month
+    if mes <= 3:
+        inicio_trimestre = date(hoy.year, 1, 1)
+    elif mes <= 6:
+        inicio_trimestre = date(hoy.year, 4, 1)
+    elif mes <= 9:
+        inicio_trimestre = date(hoy.year, 7, 1)
+    else:
+        inicio_trimestre = date(hoy.year, 10, 1)
+    fecha_desde_default = inicio_trimestre.strftime('%Y-%m-%d')
+    fecha_hasta_default = hoy.strftime('%Y-%m-%d')
+    return render_template('movimientos.html', movimientos=movimientos, conceptos_por_mov=conceptos_por_mov, contrapartida_por_mov=contrapartida_por_mov, fecha_desde_default=fecha_desde_default, fecha_hasta_default=fecha_hasta_default)
 
 @app.route('/movimientos/nuevo', methods=['GET', 'POST'])
 def nuevo_movimiento():
@@ -276,6 +289,15 @@ def duplicar_movimiento(id):
     )
     # Pasamos los conceptos para que se muestren en el formulario
     return render_template('movimiento_form.html', movimiento=movimiento_clon, conceptos=conceptos, cuentas_normales=cuentas_normales, cuentas_contrapartida=cuentas_contrapartida)
+
+@app.route('/movimientos/ver/<int:id>', methods=['GET'])
+@login_required
+def ver_movimiento(id):
+    movimiento = Movimiento.query.get_or_404(id)
+    conceptos = MovimientoConcepto.query.filter_by(movimiento_id=movimiento.id).all()
+    cuentas_normales = Cuenta.query.filter_by(tipo='normal').all()
+    cuentas_contrapartida = Cuenta.query.filter_by(tipo='contrapartida').all()
+    return render_template('movimiento_form.html', movimiento=movimiento, conceptos=conceptos, cuentas_normales=cuentas_normales, cuentas_contrapartida=cuentas_contrapartida, solo_lectura=True)
 
 @app.route('/resultado_explotacion', methods=['GET', 'POST'])
 def resultado_explotacion():
@@ -592,6 +614,24 @@ def subir_db_a_ftp():
         print(f'Backup de la base de datos subido por SFTP como {nombre_archivo}.')
     except Exception as e:
         print(f'Error al subir el backup por SFTP: {e}')
+
+@app.template_filter('tipomov')
+def tipomov(value):
+    if value is None:
+        return ''
+    if value.lower() == 'gasto':
+        return 'Gasto'
+    elif value.lower() == 'ingreso':
+        return 'Ingreso'
+    return value.capitalize()
+
+@app.template_filter('datetimeformat')
+def datetimeformat(value, format='%d/%m/%Y'):
+    try:
+        from datetime import datetime
+        return datetime.strptime(value, '%Y-%m-%d').strftime(format)
+    except Exception:
+        return value
 
 if __name__ == '__main__':
     with app.app_context():

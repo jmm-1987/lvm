@@ -74,11 +74,32 @@
         }
         .volver-btn { background-color: #e53935 !important; color: #fff !important; }
         .volver-btn:hover { background-color: #b71c1c !important; }
+        .filtro-input, .filtro-select {
+            padding: 8px 12px;
+            font-size: 1em;
+            border: 1px solid #b0bec5;
+            border-radius: 5px;
+            background: #fff;
+            color: #333;
+            margin-right: 8px;
+            margin-left: 2px;
+        }
+        .filtro-label {
+            font-size: 1em;
+            color: #1976d2;
+            margin-left: 8px;
+            margin-right: 2px;
+        }
+        .tipo-mov.gasto { color: #d32f2f; font-weight: bold; }
+        .tipo-mov.ingreso { color: #388e3c; font-weight: bold; }
     </style>
     <script>
         function filtrarTabla() {
             var input = document.getElementById('busqueda');
             var filtro = input.value.toLowerCase();
+            var fechaDesde = document.getElementById('fecha_desde').value;
+            var fechaHasta = document.getElementById('fecha_hasta').value;
+            var tipoFiltro = document.getElementById('tipo_filtro').value;
             var filas = document.querySelectorAll('#tabla-movimientos tbody tr');
             for (let i = 0; i < filas.length; i++) {
                 let fila = filas[i];
@@ -86,6 +107,21 @@
                 if (fila.children.length > 1) {
                     var texto = fila.textContent.toLowerCase();
                     var mostrar = texto.includes(filtro);
+                    // Filtrado por fecha
+                    var fechaFactura = fila.children[1].textContent.trim(); // dd/mm/aaaa
+                    if (fechaDesde) {
+                        var partes = fechaFactura.split('/');
+                        var fechaMov = partes[2] + '-' + partes[1] + '-' + partes[0];
+                        if (fechaMov < fechaDesde) mostrar = false;
+                    }
+                    if (fechaHasta) {
+                        var partes = fechaFactura.split('/');
+                        var fechaMov = partes[2] + '-' + partes[1] + '-' + partes[0];
+                        if (fechaMov > fechaHasta) mostrar = false;
+                    }
+                    // Filtrado por tipo
+                    var tipo = fila.children[0].textContent.trim();
+                    if (tipoFiltro && tipo !== tipoFiltro) mostrar = false;
                     fila.style.display = mostrar ? '' : 'none';
                     // Si la siguiente fila es de detalles (colspan), mostrarla solo si la principal está visible
                     if (i + 1 < filas.length && filas[i + 1].children.length === 1 && filas[i + 1].children[0].hasAttribute('colspan')) {
@@ -103,13 +139,23 @@
             <a href="/movimientos/nuevo" class="menu-btn">Nuevo movimiento</a>
             <a href="/" class="menu-btn volver-btn">Volver al inicio</a>
         </div>
-        <div class="search-box">
+        <div class="search-box" style="display: flex; gap: 10px; align-items: center; margin-bottom: 20px;">
             <input type="text" id="busqueda" class="search-input" placeholder="Buscar movimiento..." onkeyup="filtrarTabla()">
+            <label for="fecha_desde" class="filtro-label">Desde:</label>
+            <input type="date" id="fecha_desde" class="filtro-input" onchange="filtrarTabla()" value="{{ fecha_desde_default }}">
+            <label for="fecha_hasta" class="filtro-label">Hasta:</label>
+            <input type="date" id="fecha_hasta" class="filtro-input" onchange="filtrarTabla()" value="{{ fecha_hasta_default }}">
+            <label for="tipo_filtro" class="filtro-label">Tipo:</label>
+            <select id="tipo_filtro" class="filtro-select" onchange="filtrarTabla()">
+                <option value="">Todos</option>
+                <option value="Gasto">Gasto</option>
+                <option value="Ingreso">Ingreso</option>
+            </select>
         </div>
         <table id="tabla-movimientos">
             <tr>
                 <th>Tipo</th>
-                <th>Fecha trabajo</th>
+                <!-- <th>Fecha trabajo</th> -->
                 <th>Fecha factura</th>
                 <th>Num/factura</th>
                 <th>Importe</th>
@@ -118,11 +164,13 @@
                 <th>Acciones</th>
             </tr>
             <tbody>
-            {% for mov in movimientos %}
+            {% for mov in movimientos|sort(attribute='fecha_factura', reverse=True) %}
             <tr style="background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.07); border-radius: 10px 10px 0 0; border-top: 2px solid #1976d2;">
-                <td style="border-left: 6px solid #1976d2;">{{ mov.tipo }}</td>
-                <td>{{ mov.fecha_trabajo }}</td>
-                <td>{{ mov.fecha_factura }}</td>
+                <td style="border-left: 6px solid #1976d2;">
+                    <span class="tipo-mov {{ 'gasto' if mov.tipo|tipomov == 'Gasto' else 'ingreso' }}">{{ mov.tipo|tipomov }}</span>
+                </td>
+                <!-- <td>{{ mov.fecha_trabajo }}</td> -->
+                <td>{{ mov.fecha_factura|datetimeformat }}</td>
                 <td>{{ mov.num_factura }}</td>
                 <td class="valor">{{ '%.2f'|format(mov.base_imponible|default(0))|replace(',', '.')|replace('.', ',') }}</td>
                 <td class="valor"><strong>{{ '%.2f'|format(mov.total|default(0))|replace(',', '.')|replace('.', ',') }}</strong></td>
@@ -135,12 +183,18 @@
                     {% endif %}
                 </td>
                 <td class="acciones">
-                    <div>
-                        <a href="/movimientos/editar/{{ mov.id }}" class="btn">Editar</a>
-                        <a href="/movimientos/duplicar/{{ mov.id }}" class="btn" style="background:#43a047; color:#fff; margin-left:8px;">Duplicar</a>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <a href="/movimientos/duplicar/{{ mov.id }}" class="btn" style="background:#43a047; color:#fff;">Duplicar</a>
                         <form action="/movimientos/borrar/{{ mov.id }}" method="post" style="display:inline;" onsubmit="return confirm('¿Seguro que quieres borrar este movimiento?');">
-                          <button type="submit" style="background:#e53935; color:#fff; border:none; border-radius:6px; padding:8px 16px; margin-left:8px; cursor:pointer;">Borrar</button>
+                            <button type="submit" style="background:#e53935; color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer; display:flex; align-items:center;">
+                                <span style="margin-right:6px;"></span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24"><path fill="#fff" d="M7 21q-.825 0-1.413-.588T5 19V7H4V5h5V4h6v1h5v2h-1v12q0 .825-.588 1.413T17 21H7Zm10-14H7v12h10V7Zm-8 10h2v-8H9v8Zm4 0h2v-8h-2v8Z"/></svg>
+                            </button>
                         </form>
+                        <a href="/movimientos/ver/{{ mov.id }}" class="btn" style="background:#1976d2; color:#fff; display:flex; align-items:center; padding:8px 16px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" style="margin-right:6px;"><path fill="#fff" d="M12 19q-3.35 0-6.025-1.863T2.1 12.05q-.125-.2-.112-.425T2.1 11.2Q3.95 8.075 6.625 6.038T12 4q3.35 0 6.025 2.038T21.9 11.2q.125.2.113.425T21.9 12.05Q20.05 15.175 17.375 17.113T12 19Zm0-7q.825 0 1.413-.588T14 10q0-.825-.588-1.413T12 8q-.825 0-1.413.588T10 10q0 .825.588 1.413T12 12Z"/></svg>
+                            
+                        </a>
                     </div>
                 </td>
             </tr>

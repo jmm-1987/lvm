@@ -25,6 +25,21 @@
         .autocomplete-item { padding: 10px; cursor: pointer; }
         .autocomplete-item:hover { background: #e3f2fd; }
         .concepto-cell { position: relative; }
+        .fecha-input {
+            width: 140px;
+            font-size: 1em;
+            padding: 7px 8px;
+            border-radius: 5px;
+            border: 1px solid #b0bec5;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            width: 28px;
+            height: 28px;
+            filter: invert(34%) sepia(99%) saturate(747%) hue-rotate(181deg) brightness(95%) contrast(92%);
+            cursor: pointer;
+        }
+        input[type="date"]::-ms-input-placeholder { color: #aaa; }
+        input[type="date"]::placeholder { color: #aaa; }
     </style>
     <script>
         const cuentasNormales = [
@@ -43,17 +58,17 @@
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td class="concepto-cell">
-                    <input type="text" name="cuenta_texto_${conceptoIdx}" placeholder="Buscar cuenta..." autocomplete="off" value="${cuenta_texto}" oninput="showAutocompleteCuenta(this, ${conceptoIdx})" onfocus="showAutocompleteCuenta(this, ${conceptoIdx})" required>
+                    <input type="text" name="cuenta_texto_${conceptoIdx}" placeholder="Buscar cuenta..." autocomplete="off" value="${cuenta_texto}" oninput="showAutocompleteCuenta(this, ${conceptoIdx})" onfocus="showAutocompleteCuenta(this, ${conceptoIdx})" required {% if solo_lectura %}disabled{% endif %}>
                     <input type="hidden" name="cuenta_${conceptoIdx}" value="${cuenta_id}">
                     <div class="autocomplete-items" id="autocomplete-cuenta-${conceptoIdx}" style="display:none;"></div>
                 </td>
                 <td class="concepto-cell">
-                    <input type="text" name="contrapartida_texto_${conceptoIdx}" placeholder="Buscar contrapartida..." autocomplete="off" value="${contrapartida_texto}" oninput="showAutocompleteContrapartida(this, ${conceptoIdx})" onfocus="showAutocompleteContrapartida(this, ${conceptoIdx})" required data-idx="${conceptoIdx}">
+                    <input type="text" name="contrapartida_texto_${conceptoIdx}" placeholder="Buscar contrapartida..." autocomplete="off" value="${contrapartida_texto}" oninput="showAutocompleteContrapartida(this, ${conceptoIdx})" onfocus="showAutocompleteContrapartida(this, ${conceptoIdx})" required data-idx="${conceptoIdx}" {% if solo_lectura %}disabled{% endif %}>
                     <input type="hidden" name="contrapartida_${conceptoIdx}" value="${contrapartida_id}">
                     <div class="autocomplete-items" id="autocomplete-contrapartida-${conceptoIdx}" style="display:none;"></div>
                 </td>
-                <td><input type="number" name="importe_${conceptoIdx}" step="0.01" value="${importe}" required onchange="sumarTotal()" class="importe-cell"></td>
-                <td><input type="text" name="concepto_${conceptoIdx}" value="${concepto}" placeholder="Concepto opcional"></td>
+                <td><input type="number" name="importe_${conceptoIdx}" step="0.01" value="${importe}" required onchange="sumarTotal()" class="importe-cell" {% if solo_lectura %}disabled{% endif %}></td>
+                <td><input type="text" name="concepto_${conceptoIdx}" value="${concepto}" placeholder="Concepto opcional" {% if solo_lectura %}disabled{% endif %}></td>
                 <td><button type="button" class="remove-btn" onclick="removeConcepto(this)">-</button></td>
             `;
             table.appendChild(row);
@@ -202,15 +217,33 @@
         });
     });
     </script>
+    <script>
+function habilitarEdicion() {
+    var form = document.getElementById('movimiento-form');
+    var elementos = form.querySelectorAll('input, select, textarea');
+    elementos.forEach(function(el) {
+        if (el.name !== 'csrf_token') el.removeAttribute('disabled');
+    });
+    document.getElementById('editar-btn').style.display = 'none';
+    var grabarBtn = form.querySelector('button[type="submit"]');
+    if (grabarBtn) grabarBtn.style.display = '';
+    // Cambiar action si es edición
+    var movId = '{{ movimiento.id if movimiento and movimiento.id else "" }}';
+    if (movId) {
+        form.action = '/movimientos/editar/' + movId;
+    }
+}
+</script>
 </head>
 <body>
     <div class="container">
         <h1>{% if movimiento %}Editar{% else %}Nuevo{% endif %} movimiento</h1>
-        <form method="post" action="{{ url_for('nuevo_movimiento') }}">
+        {% set es_edicion = movimiento and movimiento.id and not solo_lectura %}
+        <form id="movimiento-form" method="post" action="{% if es_edicion %}{{ url_for('editar_movimiento', id=movimiento.id) }}{% else %}{{ url_for('nuevo_movimiento') }}{% endif %}">
             <div style="display: flex; gap: 10px; align-items: flex-end;">
                 <div style="flex: 1;">
                     <label>Tipo:
-                        <select name="tipo" required>
+                        <select name="tipo" id="tipo" required {% if solo_lectura %}disabled{% endif %}>
                             <option value="Gasto" {% if not movimiento or (movimiento and movimiento.tipo == 'Gasto') %}selected{% endif %}>Gasto</option>
                             <option value="Ingreso" {% if movimiento and movimiento.tipo == 'Ingreso' %}selected{% endif %}>Ingreso</option>
                         </select>
@@ -218,18 +251,18 @@
                 </div>
                 <div style="flex: 1;">
                     <label>Fecha trabajo:
-                        <input type="date" name="fecha_trabajo" required value="{{ movimiento.fecha_trabajo if movimiento else '' }}">
+                        <input type="date" name="fecha_trabajo" id="fecha_trabajo" class="fecha-input" value="{{ movimiento.fecha_trabajo if movimiento else '' }}" required {% if solo_lectura %}disabled{% endif %}>
                     </label>
                 </div>
                 <div style="flex: 1;">
                     <label>Fecha factura:
-                        <input type="date" name="fecha_factura" required value="{{ movimiento.fecha_factura if movimiento else '' }}">
+                        <input type="date" name="fecha_factura" id="fecha_factura" class="fecha-input" value="{{ movimiento.fecha_factura if movimiento else '' }}" required {% if solo_lectura %}disabled{% endif %}>
                     </label>
                 </div>
             </div>
             <div style="margin-top: 20px;">
                 <label>Num/factura:
-                    <input type="text" name="num_factura" required value="{{ movimiento.num_factura if movimiento else '' }}">
+                    <input type="text" name="num_factura" id="num_factura" value="{{ movimiento.num_factura if movimiento else '' }}" required {% if solo_lectura %}disabled{% endif %}>
                 </label>
             </div>
             <!-- Tabla de conceptos con cuenta y contrapartida por línea -->
@@ -250,7 +283,12 @@
             <div class="total-box" id="total-box">Total: 0.00 €</div>
             <input type="hidden" name="total" id="total" value="0">
             <div class="actions">
-                <button type="submit">Guardar</button>
+                {% if solo_lectura %}
+                    <button type="button" id="editar-btn" class="menu-btn" style="background:#1976d2; color:#fff; margin-top:18px;" onclick="habilitarEdicion()">Editar</button>
+                    <button type="submit" class="menu-btn" style="display:none; background:#43a047; color:#fff; margin-top:18px;">Grabar</button>
+                {% else %}
+                    <button type="submit" class="menu-btn" style="background:#43a047; color:#fff; margin-top:18px;">Grabar</button>
+                {% endif %}
                 <a href="/movimientos" class="menu-btn">Volver al listado</a>
             </div>
         </form>
