@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 from flask_sqlalchemy import SQLAlchemy
 import os
 from datetime import datetime, date
-from ftplib import FTP
+import paramiko
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -524,23 +524,28 @@ def descargar_db():
     nombre_archivo = f'lvm{fecha}.db'
     return send_file(db_path, as_attachment=True, download_name=nombre_archivo)
 
-# Función para subir la base de datos al FTP
+# Función para subir la base de datos por SFTP
 
 def subir_db_a_ftp():
-    ftp_host = os.environ.get('FTP_HOST')
-    ftp_user = os.environ.get('FTP_USER')
-    ftp_pass = os.environ.get('FTP_PASS')
-    ftp_dir = os.environ.get('FTP_DIR', '/')
+    sftp_host = os.environ.get('FTP_HOST')
+    sftp_user = os.environ.get('FTP_USER')
+    sftp_pass = os.environ.get('FTP_PASS')
+    sftp_dir = os.environ.get('FTP_DIR', '/')
     db_path = os.path.join(os.path.dirname(__file__), 'app.db')
+    if not sftp_host or not sftp_user or not sftp_pass:
+        print('Faltan variables de entorno para la conexión SFTP.')
+        return
     try:
-        with FTP(ftp_host) as ftp:
-            ftp.login(user=ftp_user, passwd=ftp_pass)
-            ftp.cwd(ftp_dir)
-            with open(db_path, 'rb') as f:
-                ftp.storbinary(f'STOR app.db', f)
-        print('Backup de la base de datos subido al FTP.')
+        transport = paramiko.Transport((sftp_host, 22))
+        transport.connect(username=sftp_user, password=sftp_pass)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        sftp.chdir(sftp_dir)
+        sftp.put(db_path, 'app.db')
+        sftp.close()
+        transport.close()
+        print('Backup de la base de datos subido por SFTP.')
     except Exception as e:
-        print(f'Error al subir el backup al FTP: {e}')
+        print(f'Error al subir el backup por SFTP: {e}')
 
 if __name__ == '__main__':
     with app.app_context():

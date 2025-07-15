@@ -4,3 +4,4 @@ gunicorn
 APScheduler 
 Flask-Login
 Werkzeug 
+paramiko
