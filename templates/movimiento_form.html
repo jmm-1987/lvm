@@ -237,6 +237,9 @@ function habilitarEdicion() {
 </head>
 <body>
     <div class="container">
+        <form action="{{ url_for('guardar_cambios') }}" method="post" style="display:inline; float:right; margin-top:10px;">
+            <button type="submit" class="menu-btn" style="background:#fbc02d; color:#333;">Guardar cambios</button>
+        </form>
         <h1>{% if movimiento %}Editar{% else %}Nuevo{% endif %} movimiento</h1>
         {% set es_edicion = movimiento and movimiento.id and not solo_lectura %}
         <form id="movimiento-form" method="post" action="{% if es_edicion %}{{ url_for('editar_movimiento', id=movimiento.id) }}{% else %}{{ url_for('nuevo_movimiento') }}{% endif %}">

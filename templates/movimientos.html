@@ -127,6 +127,10 @@
                     if (i + 1 < filas.length && filas[i + 1].children.length === 1 && filas[i + 1].children[0].hasAttribute('colspan')) {
                         filas[i + 1].style.display = mostrar ? '' : 'none';
                     }
+                    // Si la siguiente fila es espaciadora (colspan=8 o más), ocultarla si la principal está oculta
+                    if (i + 2 < filas.length && filas[i + 2].children.length === 1 && filas[i + 2].children[0].colSpan >= 7) {
+                        filas[i + 2].style.display = mostrar ? '' : 'none';
+                    }
                 }
             }
         }
@@ -134,6 +138,9 @@
 </head>
 <body>
     <div class="container">
+        <form action="{{ url_for('guardar_cambios') }}" method="post" style="display:inline; float:right; margin-top:10px;">
+            <button type="submit" class="btn" style="background:#fbc02d; color:#333;">Guardar cambios</button>
+        </form>
         <h1>Listado de movimientos</h1>
         <div style="display: flex; gap: 10px; margin-bottom: 20px;">
             <a href="/movimientos/nuevo" class="menu-btn">Nuevo movimiento</a>

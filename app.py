@@ -75,8 +75,8 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        lvm_password = os.environ.get('LVM_PASSWORD')
-        #lvm_password = "1"
+        #lvm_password = os.environ.get('LVM_PASSWORD')
+        lvm_password = "1"
         if username == 'lvm' and lvm_password and password == lvm_password:
             user = UsuarioFalso('lvm')
             login_user(user)
@@ -614,6 +614,13 @@ def subir_db_a_ftp():
         print(f'Backup de la base de datos subido por SFTP como {nombre_archivo}.')
     except Exception as e:
         print(f'Error al subir el backup por SFTP: {e}')
+
+@app.route('/guardar_cambios', methods=['POST'])
+@login_required
+def guardar_cambios():
+    subir_db_a_ftp()
+    flash('Cambios guardados y base de datos subida correctamente.', 'success')
+    return redirect(request.referrer or url_for('index'))
 
 @app.template_filter('tipomov')
 def tipomov(value):

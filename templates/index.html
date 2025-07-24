@@ -75,7 +75,10 @@
         <a href="/cuentas" class="menu-btn">Gestión de cuentas</a>
         <a href="/movimientos" class="menu-btn">Gestión de movimientos</a>
         {% if current_user.is_authenticated %}
-            <form action="{{ url_for('logout') }}" method="post" style="position:absolute; top:0; right:0;">
+            <form action="{{ url_for('guardar_cambios') }}" method="post" style="position:absolute; top:0; right:160px; display:inline;">
+                <button type="submit" class="logout-btn" style="background:#fbc02d; color:#333; right:120px;">Guardar cambios</button>
+            </form>
+            <form action="{{ url_for('logout') }}" method="post" style="position:absolute; top:0; right:0; display:inline;">
                 <button type="submit" class="logout-btn">Cerrar sesión</button>
             </form>
         {% endif %}
