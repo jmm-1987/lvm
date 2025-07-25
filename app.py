@@ -189,6 +189,12 @@ def nuevo_movimiento():
     cuentas_contrapartida = Cuenta.query.filter_by(tipo='contrapartida').all()
     if request.method == 'POST':
         datos = request.form
+        # Validar que el número de factura no esté duplicado
+        num_factura = datos['num_factura']
+        existe = Movimiento.query.filter_by(num_factura=num_factura).first()
+        if existe:
+            flash('Ya existe un movimiento con ese número de factura.', 'error')
+            return render_template('movimiento_form.html', cuentas_normales=cuentas_normales, cuentas_contrapartida=cuentas_contrapartida, movimiento=None, conceptos=None)
         # Validar que todas las contrapartidas sean iguales
         contrapartidas = set()
         idx = 0
@@ -231,6 +237,13 @@ def editar_movimiento(id):
     cuentas_contrapartida = Cuenta.query.filter_by(tipo='contrapartida').all()
     if request.method == 'POST':
         datos = request.form
+        # Validar que el número de factura no esté duplicado (excepto el propio movimiento)
+        num_factura = datos['num_factura']
+        existe = Movimiento.query.filter(Movimiento.num_factura == num_factura, Movimiento.id != movimiento.id).first()
+        if existe:
+            flash('Ya existe un movimiento con ese número de factura.', 'error')
+            conceptos = MovimientoConcepto.query.filter_by(movimiento_id=movimiento.id).all()
+            return render_template('movimiento_form.html', movimiento=movimiento, cuentas_normales=cuentas_normales, cuentas_contrapartida=cuentas_contrapartida, conceptos=conceptos)
         # Validar que todas las contrapartidas sean iguales
         contrapartidas = set()
         idx = 0
@@ -329,22 +342,24 @@ def resultado_explotacion():
                 Movimiento.fecha_factura >= fecha_inicio,
                 Movimiento.fecha_factura <= fecha_fin
             ).all()
-        # Detalle de cuentas específicas (6 y 7)
+        # Agrupar y sumar importes por cuenta
         prefijos = ('623','626','621','622','625','628','629','310','640','649','662','7')
-        detalle = [
-            {
-                'cuenta': c.Cuenta.cuenta,
-                'nombre': c.Cuenta.nombre,
-                'importe': c.MovimientoConcepto.importe
-            }
-            for c in conceptos if str(c.Cuenta.cuenta).startswith(prefijos)
-        ]
+        detalle_dict = {}
+        for c in conceptos:
+            cuenta = str(c.Cuenta.cuenta)
+            if cuenta.startswith(prefijos):
+                key = cuenta
+                if key not in detalle_dict:
+                    detalle_dict[key] = {
+                        'cuenta': cuenta,
+                        'nombre': c.Cuenta.nombre,
+                        'importe': 0
+                    }
+                detalle_dict[key]['importe'] += c.MovimientoConcepto.importe
+        detalle = list(detalle_dict.values())
         suma_detalle = sum(d['importe'] for d in detalle)
-        # Suma de cuentas que empiezan por 7 (solo para mostrar arriba, si quieres puedes dejarlo)
         suma_7 = sum(d['importe'] for d in detalle if str(d['cuenta']).startswith('7'))
-        # Suma de la cuenta 70500000001
         suma_705 = sum(d['importe'] for d in detalle if str(d['cuenta']).strip() == '70500000001')
-        # Suma del resto de cuentas (excluyendo la 70500000001)
         suma_resto = sum(d['importe'] for d in detalle if str(d['cuenta']).strip() != '70500000001')
         resultado = suma_7
         diferencia = resultado - suma_detalle

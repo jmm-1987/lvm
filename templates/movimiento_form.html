@@ -241,6 +241,17 @@ function habilitarEdicion() {
             <button type="submit" class="menu-btn" style="background:#fbc02d; color:#333;">Guardar cambios</button>
         </form>
         <h1>{% if movimiento %}Editar{% else %}Nuevo{% endif %} movimiento</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div style="margin: 18px 0 10px 0;">
+              {% for category, message in messages %}
+                <div style="padding: 12px 18px; border-radius: 6px; margin-bottom: 8px; font-size:1.1em; {% if category == 'error' %}background:#ffebee; color:#b71c1c; border:1px solid #e57373;{% elif category == 'success' %}background:#e8f5e9; color:#388e3c; border:1px solid #81c784;{% else %}background:#e3f2fd; color:#1976d2; border:1px solid #64b5f6;{% endif %}">
+                  {{ message }}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
         {% set es_edicion = movimiento and movimiento.id and not solo_lectura %}
         <form id="movimiento-form" method="post" action="{% if es_edicion %}{{ url_for('editar_movimiento', id=movimiento.id) }}{% else %}{{ url_for('nuevo_movimiento') }}{% endif %}">
             <div style="display: flex; gap: 10px; align-items: flex-end;">

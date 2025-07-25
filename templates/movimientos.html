@@ -101,11 +101,16 @@
             var fechaHasta = document.getElementById('fecha_hasta').value;
             var tipoFiltro = document.getElementById('tipo_filtro').value;
             var filas = document.querySelectorAll('#tabla-movimientos tbody tr');
+            var totalVisibles = 0;
             for (let i = 0; i < filas.length; i++) {
                 let fila = filas[i];
                 // Solo procesar filas principales (las que no tienen colspan)
                 if (fila.children.length > 1) {
+                    // Buscar también en la fila de conceptos asociada (la siguiente si tiene colspan)
                     var texto = fila.textContent.toLowerCase();
+                    if (i + 1 < filas.length && filas[i + 1].children.length === 1 && filas[i + 1].children[0].hasAttribute('colspan')) {
+                        texto += ' ' + filas[i + 1].textContent.toLowerCase();
+                    }
                     var mostrar = texto.includes(filtro);
                     // Filtrado por fecha
                     var fechaFactura = fila.children[1].textContent.trim(); // dd/mm/aaaa
@@ -131,8 +136,11 @@
                     if (i + 2 < filas.length && filas[i + 2].children.length === 1 && filas[i + 2].children[0].colSpan >= 7) {
                         filas[i + 2].style.display = mostrar ? '' : 'none';
                     }
+                    if (mostrar) totalVisibles++;
                 }
             }
+            // Actualizar el contador dinámicamente
+            document.getElementById('contador-movimientos').textContent = totalVisibles;
         }
     </script>
 </head>
@@ -142,6 +150,9 @@
             <button type="submit" class="btn" style="background:#fbc02d; color:#333;">Guardar cambios</button>
         </form>
         <h1>Listado de movimientos</h1>
+        <div style="font-size:1.1em; color:#1976d2; margin-bottom: 10px; text-align:center;">
+            Total de movimientos en la vista: <strong id="contador-movimientos">{{ movimientos|length }}</strong>
+        </div>
         <div style="display: flex; gap: 10px; margin-bottom: 20px;">
             <a href="/movimientos/nuevo" class="menu-btn">Nuevo movimiento</a>
             <a href="/" class="menu-btn volver-btn">Volver al inicio</a>
