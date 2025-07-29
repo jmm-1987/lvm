@@ -6,6 +6,8 @@ import paramiko
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+import csv
+import io
 
 app = Flask(__name__)
 app.secret_key = 'pon_aqui_una_clave_secreta_larga_y_unica'
@@ -75,8 +77,8 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        #lvm_password = os.environ.get('LVM_PASSWORD')
-        lvm_password = "1"
+        lvm_password = os.environ.get('LVM_PASSWORD')
+        #lvm_password = "1"
         if username == 'lvm' and lvm_password and password == lvm_password:
             user = UsuarioFalso('lvm')
             login_user(user)
@@ -629,6 +631,280 @@ def subir_db_a_ftp():
         print(f'Backup de la base de datos subido por SFTP como {nombre_archivo}.')
     except Exception as e:
         print(f'Error al subir el backup por SFTP: {e}')
+
+def exportar_csv_a_ftp():
+    sftp_host = os.environ.get('FTP_HOST')
+    sftp_user = os.environ.get('FTP_USER')
+    sftp_pass = os.environ.get('FTP_PASS')
+    sftp_dir = os.environ.get('FTP_DIR', '/')
+    fecha = datetime.now().strftime('%Y%m%d')
+    nombre_archivo = f'lvm_csv_{fecha}.zip'
+    
+    if not sftp_host or not sftp_user or not sftp_pass:
+        print('Faltan variables de entorno para la conexión SFTP.')
+        return
+    
+    try:
+        # Crear archivo ZIP con todos los CSV
+        import zipfile
+        zip_path = os.path.join(os.path.dirname(__file__), nombre_archivo)
+        
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # Exportar cada tabla a CSV
+            tablas = [Cuenta, Movimiento, MovimientoConcepto]
+            nombres_tablas = ['cuentas', 'movimientos', 'movimientos_conceptos']
+            
+            for tabla, nombre in zip(tablas, nombres_tablas):
+                csv_buffer = io.StringIO()
+                writer = csv.writer(csv_buffer)
+                
+                # Obtener datos de la tabla
+                registros = tabla.query.all()
+                
+                if registros:
+                    # Escribir encabezados
+                    columnas = [column.name for column in tabla.__table__.columns]
+                    writer.writerow(columnas)
+                    
+                    # Escribir datos
+                    for registro in registros:
+                        fila = []
+                        for columna in columnas:
+                            valor = getattr(registro, columna)
+                            fila.append(str(valor) if valor is not None else '')
+                        writer.writerow(fila)
+                
+                # Añadir CSV al ZIP
+                zipf.writestr(f'{nombre}.csv', csv_buffer.getvalue())
+        
+        # Subir ZIP al FTP
+        transport = paramiko.Transport((sftp_host, 22))
+        transport.connect(username=sftp_user, password=sftp_pass)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        
+        try:
+            sftp.chdir(sftp_dir)
+        except IOError:
+            dirs = sftp_dir.strip('/').split('/')
+            path = ''
+            for d in dirs:
+                path += '/' + d
+                try:
+                    sftp.chdir(path)
+                except IOError:
+                    sftp.mkdir(path)
+                    sftp.chdir(path)
+        
+        # Listar archivos de backup CSV existentes
+        archivos = sftp.listdir()
+        backups_csv = sorted([f for f in archivos if f.startswith('lvm_csv_') and f.endswith('.zip')])
+        # Si hay más de 2, borrar los más antiguos
+        if len(backups_csv) > 2:
+            for f in backups_csv[:-2]:
+                try:
+                    sftp.remove(f)
+                    print(f'Backup CSV antiguo eliminado: {f}')
+                except Exception as e:
+                    print(f'No se pudo eliminar {f}: {e}')
+        
+        # Subir el nuevo backup CSV
+        sftp.put(zip_path, nombre_archivo)
+        sftp.close()
+        transport.close()
+        
+        # Eliminar archivo ZIP local
+        os.remove(zip_path)
+        
+        print(f'Backup CSV subido por SFTP como {nombre_archivo}.')
+        
+    except Exception as e:
+        print(f'Error al exportar CSV por SFTP: {e}')
+
+@app.route('/exportar_csv')
+@login_required
+def exportar_csv():
+    try:
+        # Crear archivo ZIP con todos los CSV en directorio temporal
+        import zipfile
+        import tempfile
+        fecha = datetime.now().strftime('%Y%m%d')
+        nombre_archivo = f'lvm_csv_{fecha}.zip'
+        
+        # Crear directorio temporal
+        with tempfile.TemporaryDirectory() as temp_dir:
+            zip_path = os.path.join(temp_dir, nombre_archivo)
+            
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                # Exportar cada tabla a CSV
+                tablas = [Cuenta, Movimiento, MovimientoConcepto]
+                nombres_tablas = ['cuentas', 'movimientos', 'movimientos_conceptos']
+                
+                for tabla, nombre in zip(tablas, nombres_tablas):
+                    csv_buffer = io.StringIO()
+                    writer = csv.writer(csv_buffer)
+                    
+                    # Obtener datos de la tabla
+                    registros = tabla.query.all()
+                    
+                    if registros:
+                        # Escribir encabezados
+                        columnas = [column.name for column in tabla.__table__.columns]
+                        writer.writerow(columnas)
+                        
+                        # Escribir datos
+                        for registro in registros:
+                            fila = []
+                            for columna in columnas:
+                                valor = getattr(registro, columna)
+                                fila.append(str(valor) if valor is not None else '')
+                            writer.writerow(fila)
+                    
+                    # Añadir CSV al ZIP
+                    zipf.writestr(f'{nombre}.csv', csv_buffer.getvalue())
+            
+            # Subir al FTP usando el archivo temporal
+            exportar_csv_a_ftp_from_path(zip_path, nombre_archivo)
+            
+            # Devolver archivo para descarga (se eliminará automáticamente al salir del contexto)
+            return send_file(zip_path, as_attachment=True, download_name=nombre_archivo)
+        
+    except Exception as e:
+        flash(f'Error al exportar CSV: {e}', 'error')
+        return redirect(url_for('index'))
+
+def exportar_csv_a_ftp_from_path(zip_path, nombre_archivo):
+    sftp_host = os.environ.get('FTP_HOST')
+    sftp_user = os.environ.get('FTP_USER')
+    sftp_pass = os.environ.get('FTP_PASS')
+    sftp_dir = os.environ.get('FTP_DIR', '/')
+    
+    if not sftp_host or not sftp_user or not sftp_pass:
+        print('Faltan variables de entorno para la conexión SFTP.')
+        return
+    
+    try:
+        # Subir ZIP al FTP
+        transport = paramiko.Transport((sftp_host, 22))
+        transport.connect(username=sftp_user, password=sftp_pass)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        
+        try:
+            sftp.chdir(sftp_dir)
+        except IOError:
+            dirs = sftp_dir.strip('/').split('/')
+            path = ''
+            for d in dirs:
+                path += '/' + d
+                try:
+                    sftp.chdir(path)
+                except IOError:
+                    sftp.mkdir(path)
+                    sftp.chdir(path)
+        
+        # Listar archivos de backup CSV existentes
+        archivos = sftp.listdir()
+        backups_csv = sorted([f for f in archivos if f.startswith('lvm_csv_') and f.endswith('.zip')])
+        # Si hay más de 2, borrar los más antiguos
+        if len(backups_csv) > 2:
+            for f in backups_csv[:-2]:
+                try:
+                    sftp.remove(f)
+                    print(f'Backup CSV antiguo eliminado: {f}')
+                except Exception as e:
+                    print(f'No se pudo eliminar {f}: {e}')
+        
+        # Subir el nuevo backup CSV
+        sftp.put(zip_path, nombre_archivo)
+        sftp.close()
+        transport.close()
+        
+        print(f'Backup CSV subido por SFTP como {nombre_archivo}.')
+        
+    except Exception as e:
+        print(f'Error al exportar CSV por SFTP: {e}')
+
+@app.route('/importar_csv', methods=['GET', 'POST'])
+@login_required
+def importar_csv():
+    if request.method == 'POST':
+        if 'archivo' not in request.files:
+            flash('No se seleccionó ningún archivo.', 'error')
+            return redirect(url_for('importar_csv'))
+        
+        archivo = request.files['archivo']
+        if archivo.filename == '':
+            flash('No se seleccionó ningún archivo.', 'error')
+            return redirect(url_for('importar_csv'))
+        
+        if not archivo.filename.endswith('.zip'):
+            flash('El archivo debe ser un ZIP.', 'error')
+            return redirect(url_for('importar_csv'))
+        
+        try:
+            import zipfile
+            import tempfile
+            
+            # Crear directorio temporal
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Guardar archivo ZIP
+                zip_path = os.path.join(temp_dir, archivo.filename)
+                archivo.save(zip_path)
+                
+                # Extraer y procesar CSV
+                with zipfile.ZipFile(zip_path, 'r') as zipf:
+                    # Mapeo de nombres de archivo a modelos
+                    mapeo_tablas = {
+                        'cuentas.csv': Cuenta,
+                        'movimientos.csv': Movimiento,
+                        'movimientos_conceptos.csv': MovimientoConcepto
+                    }
+                    
+                    for nombre_archivo in zipf.namelist():
+                        if nombre_archivo in mapeo_tablas:
+                            modelo = mapeo_tablas[nombre_archivo]
+                            
+                            # Leer CSV
+                            with zipf.open(nombre_archivo, 'r') as csv_file:
+                                csv_reader = csv.reader(io.TextIOWrapper(csv_file, encoding='utf-8'))
+                                encabezados = next(csv_reader)  # Saltar encabezados
+                                
+                                # Limpiar tabla existente
+                                modelo.query.delete()
+                                
+                                # Insertar nuevos datos
+                                for fila in csv_reader:
+                                    if len(fila) == len(encabezados):
+                                        registro = {}
+                                        for i, columna in enumerate(encabezados):
+                                            valor = fila[i]
+                                            if valor == '':
+                                                valor = None
+                                            elif columna in ['id', 'cuenta_id', 'movimiento_id', 'contrapartida_id', 'cuenta_asociada_id']:
+                                                try:
+                                                    valor = int(valor) if valor else None
+                                                except ValueError:
+                                                    valor = None
+                                            elif columna in ['base_imponible', 'total', 'importe']:
+                                                try:
+                                                    valor = float(valor) if valor else 0.0
+                                                except ValueError:
+                                                    valor = 0.0
+                                            
+                                            registro[columna] = valor
+                                        
+                                        nuevo_registro = modelo(**registro)
+                                        db.session.add(nuevo_registro)
+                
+                db.session.commit()
+                flash('Datos importados correctamente.', 'success')
+                
+        except Exception as e:
+            flash(f'Error al importar CSV: {e}', 'error')
+            db.session.rollback()
+        
+        return redirect(url_for('index'))
+    
+    return render_template('importar_csv.html')
 
 @app.route('/guardar_cambios', methods=['POST'])
 @login_required

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Importar CSV</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 30px;
+        }
+        h1 {
+            color: #1976d2;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px dashed #b0bec5;
+            border-radius: 5px;
+            background: #f8f9fa;
+            cursor: pointer;
+        }
+        input[type="file"]:hover {
+            border-color: #1976d2;
+            background: #e3f2fd;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            margin: 10px 5px;
+            font-size: 1em;
+            background-color: #1976d2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background-color: #1565c0;
+        }
+        .btn-danger {
+            background-color: #e53935;
+        }
+        .btn-danger:hover {
+            background-color: #b71c1c;
+        }
+        .btn-success {
+            background-color: #43a047;
+        }
+        .btn-success:hover {
+            background-color: #388e3c;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .actions {
+            text-align: center;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Importar datos desde CSV</h1>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="{% if category == 'error' %}warning{% else %}info{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="warning">
+            <strong>⚠️ Advertencia:</strong> La importación reemplazará todos los datos existentes en la base de datos. 
+            Se recomienda hacer una copia de seguridad antes de proceder.
+        </div>
+        
+        <div class="info">
+            <strong>📋 Instrucciones:</strong>
+            <ul>
+                <li>El archivo debe ser un ZIP que contenga los archivos CSV exportados</li>
+                <li>Los archivos deben llamarse: cuentas.csv, movimientos.csv, movimientos_conceptos.csv</li>
+                <li>La importación borrará todos los datos actuales y los reemplazará</li>
+            </ul>
+        </div>
+        
+        <form method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="archivo">Seleccionar archivo ZIP:</label>
+                <input type="file" id="archivo" name="archivo" accept=".zip" required>
+            </div>
+            
+            <div class="actions">
+                <button type="submit" class="btn btn-success">Importar datos</button>
+                <a href="/" class="btn btn-danger">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html> 
