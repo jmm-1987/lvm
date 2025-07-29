@@ -344,7 +344,7 @@ def resultado_explotacion():
                 Movimiento.fecha_factura >= fecha_inicio,
                 Movimiento.fecha_factura <= fecha_fin
             ).all()
-        # Agrupar y sumar importes por cuenta
+        # Agrupar y sumar importes por cuenta, incluyendo detalles de transacciones
         prefijos = ('623','626','621','622','625','628','629','310','640','649','662','7')
         detalle_dict = {}
         for c in conceptos:
@@ -355,10 +355,27 @@ def resultado_explotacion():
                     detalle_dict[key] = {
                         'cuenta': cuenta,
                         'nombre': c.Cuenta.nombre,
-                        'importe': 0
+                        'importe': 0,
+                        'transacciones': []
                     }
                 detalle_dict[key]['importe'] += c.MovimientoConcepto.importe
+                # Añadir detalles de la transacción
+                contrapartida_info = ""
+                if c.MovimientoConcepto.contrapartida:
+                    contrapartida_info = f"{c.MovimientoConcepto.contrapartida.cuenta} - {c.MovimientoConcepto.contrapartida.nombre}"
+                else:
+                    contrapartida_info = "Sin contrapartida"
+                
+                transaccion = {
+                    'fecha': c.Movimiento.fecha_factura,
+                    'contrapartida': contrapartida_info,
+                    'importe': c.MovimientoConcepto.importe,
+                    'concepto': c.MovimientoConcepto.concepto or "Sin concepto"
+                }
+                detalle_dict[key]['transacciones'].append(transaccion)
         detalle = list(detalle_dict.values())
+        # Ordenar por número de cuenta
+        detalle = sorted(detalle, key=lambda x: x['cuenta'])
         suma_detalle = sum(d['importe'] for d in detalle)
         suma_7 = sum(d['importe'] for d in detalle if str(d['cuenta']).startswith('7'))
         suma_705 = sum(d['importe'] for d in detalle if str(d['cuenta']).strip() == '70500000001')
@@ -546,7 +563,11 @@ def informe_347():
     fecha_inicio = inicio_trimestre.strftime('%Y-%m-%d')
     fecha_fin = hoy.strftime('%Y-%m-%d')
     resumen_contrapartidas = []
+    resumen_contrapartidas_3000 = []
+    resumen_contrapartidas_menos_3000 = []
     total_importe = 0
+    total_importe_3000 = 0
+    total_importe_menos_3000 = 0
     if request.method == 'POST':
         fecha_inicio = request.form['fecha_inicio']
         fecha_fin = request.form['fecha_fin']
@@ -572,8 +593,24 @@ def informe_347():
             }
         resumen_dict[key]['importe'] += c.MovimientoConcepto.importe
     resumen_contrapartidas = [v for v in resumen_dict.values() if v['importe'] != 0]
+    # Ordenar alfabéticamente por nombre
+    resumen_contrapartidas = sorted(resumen_contrapartidas, key=lambda x: x['nombre'])
+    # Separar por umbral de 3000 euros
+    for contrapartida in resumen_contrapartidas:
+        if contrapartida['importe'] >= 3000:
+            resumen_contrapartidas_3000.append(contrapartida)
+            total_importe_3000 += contrapartida['importe']
+        else:
+            resumen_contrapartidas_menos_3000.append(contrapartida)
+            total_importe_menos_3000 += contrapartida['importe']
     total_importe = sum(v['importe'] for v in resumen_contrapartidas)
-    return render_template('347.html', fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, resumen_contrapartidas=resumen_contrapartidas, total_importe=total_importe)
+    return render_template('347.html', fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, 
+                         resumen_contrapartidas=resumen_contrapartidas, 
+                         resumen_contrapartidas_3000=resumen_contrapartidas_3000,
+                         resumen_contrapartidas_menos_3000=resumen_contrapartidas_menos_3000,
+                         total_importe=total_importe,
+                         total_importe_3000=total_importe_3000,
+                         total_importe_menos_3000=total_importe_menos_3000)
 
 @app.route('/descargar_db')
 def descargar_db():
@@ -761,7 +798,7 @@ def exportar_csv():
                     
                     # Añadir CSV al ZIP
                     zipf.writestr(f'{nombre}.csv', csv_buffer.getvalue())
-            
+                
             # Subir al FTP usando el archivo temporal
             exportar_csv_a_ftp_from_path(zip_path, nombre_archivo)
             

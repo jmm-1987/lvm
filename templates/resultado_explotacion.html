@@ -20,6 +20,67 @@
         .detalle-table th, .detalle-table td { padding: 8px 10px; border-bottom: 1px solid #e0e0e0; text-align: left; }
         .detalle-table th { background: #e3eaf2; }
         .diferencia { font-size: 1.3em; font-weight: bold; text-align: right; margin-top: 18px; }
+        .tooltip {
+            position: relative;
+            cursor: pointer;
+        }
+        .tooltiptext {
+            visibility: hidden;
+            width: 400px;
+            max-width: 90vw;
+            background-color: #333;
+            color: #fff;
+            text-align: left;
+            border-radius: 6px;
+            padding: 15px;
+            position: fixed;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 12px;
+            white-space: normal;
+            line-height: 1.4;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            pointer-events: none;
+        }
+        .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        .transaccion-item {
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #555;
+        }
+        .transaccion-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        .transaccion-fecha {
+            font-weight: bold;
+            color: #ffd700;
+        }
+        .transaccion-contrapartida {
+            color: #87ceeb;
+        }
+        .transaccion-importe {
+            color: #90ee90;
+            font-weight: bold;
+        }
+        .transaccion-concepto {
+            color: #dda0dd;
+            font-style: italic;
+        }
         @media print {
             body, html {
                 background: #fff !important;
@@ -80,12 +141,14 @@
                     <th>Código cuenta</th>
                     <th>Nombre</th>
                     <th>Importe</th>
+                    <th></th>
                 </tr>
                 {% for d in detalle if d.cuenta.startswith('7') %}
-                <tr>
+                <tr class="tooltip" data-transacciones='{{ d.transacciones|tojson }}'>
                     <td>{{ d.cuenta }}</td>
                     <td>{{ d.nombre }}</td>
                     <td class="{% if d.importe < 0 %}negativo{% endif %}">{{ '%.2f'|format(d.importe) }} €</td>
+                    <td></td>
                 </tr>
                 {% endfor %}
             </table>
@@ -97,12 +160,14 @@
                     <th>Código cuenta</th>
                     <th>Nombre</th>
                     <th>Importe</th>
+                    <th></th>
                 </tr>
                 {% for d in detalle if not d.cuenta.startswith('7') %}
-                <tr>
+                <tr class="tooltip" data-transacciones='{{ d.transacciones|tojson }}'>
                     <td>{{ d.cuenta }}</td>
                     <td>{{ d.nombre }}</td>
                     <td class="{% if d.importe < 0 %}negativo{% endif %}">{{ '%.2f'|format(d.importe) }} €</td>
+                    <td></td>
                 </tr>
                 {% endfor %}
             </table>
@@ -114,5 +179,92 @@
             </div>
         {% endif %}
     </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const tooltips = document.querySelectorAll('.tooltip');
+            let currentTooltip = null;
+            
+            tooltips.forEach(tooltip => {
+                tooltip.addEventListener('mouseenter', function(e) {
+                    const transacciones = JSON.parse(this.dataset.transacciones);
+                    showTooltip(e, transacciones);
+                });
+                
+                tooltip.addEventListener('mousemove', function(e) {
+                    if (currentTooltip) {
+                        updateTooltipPosition(e);
+                    }
+                });
+                
+                tooltip.addEventListener('mouseleave', function() {
+                    hideTooltip();
+                });
+            });
+            
+            function showTooltip(e, transacciones) {
+                hideTooltip();
+                
+                currentTooltip = document.createElement('div');
+                currentTooltip.className = 'tooltiptext';
+                currentTooltip.style.visibility = 'visible';
+                currentTooltip.style.opacity = '1';
+                
+                let html = '<strong>Detalles de transacciones:</strong><br><br>';
+                transacciones.forEach(t => {
+                    html += '<div class="transaccion-item">';
+                    html += '<div class="transaccion-fecha">📅 ' + formatDate(t.fecha) + '</div>';
+                    html += '<div class="transaccion-contrapartida">🏢 ' + t.contrapartida + '</div>';
+                    html += '<div class="transaccion-importe">💰 ' + parseFloat(t.importe).toFixed(2) + ' €</div>';
+                    if (t.concepto && t.concepto !== "Sin concepto") {
+                        html += '<div class="transaccion-concepto">📝 ' + t.concepto + '</div>';
+                    }
+                    html += '</div>';
+                });
+                
+                currentTooltip.innerHTML = html;
+                document.body.appendChild(currentTooltip);
+                updateTooltipPosition(e);
+            }
+            
+            function updateTooltipPosition(e) {
+                if (!currentTooltip) return;
+                
+                const tooltipRect = currentTooltip.getBoundingClientRect();
+                const viewportWidth = window.innerWidth;
+                const viewportHeight = window.innerHeight;
+                
+                let x = e.clientX + 10;
+                let y = e.clientY - tooltipRect.height - 10;
+                
+                // Ajustar si se sale por la derecha
+                if (x + tooltipRect.width > viewportWidth) {
+                    x = e.clientX - tooltipRect.width - 10;
+                }
+                
+                // Ajustar si se sale por arriba
+                if (y < 0) {
+                    y = e.clientY + 10;
+                    currentTooltip.style.transform = 'none';
+                    currentTooltip.querySelector('::after').style.top = '-10px';
+                    currentTooltip.querySelector('::after').style.bottom = 'auto';
+                }
+                
+                currentTooltip.style.left = x + 'px';
+                currentTooltip.style.top = y + 'px';
+            }
+            
+            function hideTooltip() {
+                if (currentTooltip) {
+                    currentTooltip.remove();
+                    currentTooltip = null;
+                }
+            }
+            
+            function formatDate(dateStr) {
+                const date = new Date(dateStr);
+                return date.toLocaleDateString('es-ES');
+            }
+        });
+    </script>
 </body>
 </html> 

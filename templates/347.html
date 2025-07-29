@@ -31,24 +31,54 @@
             <div class="resumen">
                 <span>Totales por cuenta de contrapartida</span>
             </div>
+            
+            {% if resumen_contrapartidas_3000 %}
+            <h2 style="color: #2e7d32; margin-top: 30px; margin-bottom: 15px;">Contrapartidas con importe ≥ 3.000 €</h2>
             <table class="cuentas-table">
                 <tr>
                     <th>Contrapartida</th>
                     <th>Nombre</th>
                     <th>Importe total</th>
                 </tr>
-                {% for c in resumen_contrapartidas %}
+                {% for c in resumen_contrapartidas_3000 %}
                 <tr>
                     <td>{{ c.contrapartida }}</td>
                     <td>{{ c.nombre }}</td>
                     <td>{{ '%.2f'|format(c.importe) if c.importe != 0 else '' }}{% if c.importe != 0 %} €{% endif %}</td>
                 </tr>
                 {% endfor %}
-                <tr style="font-weight:bold; background:#e3eaf2;">
-                    <td colspan="2" style="text-align:right;">Total:</td>
-                    <td>{{ '%.2f'|format(total_importe) if total_importe != 0 else '' }}{% if total_importe != 0 %} €{% endif %}</td>
+                <tr style="font-weight:bold; background:#e8f5e8;">
+                    <td colspan="2" style="text-align:right;">Total ≥ 3.000 €:</td>
+                    <td>{{ '%.2f'|format(total_importe_3000) if total_importe_3000 != 0 else '' }}{% if total_importe_3000 != 0 %} €{% endif %}</td>
                 </tr>
             </table>
+            {% endif %}
+            
+            {% if resumen_contrapartidas_menos_3000 %}
+            <h2 style="color: #f57c00; margin-top: 30px; margin-bottom: 15px;">Contrapartidas con importe < 3.000 €</h2>
+            <table class="cuentas-table">
+                <tr>
+                    <th>Contrapartida</th>
+                    <th>Nombre</th>
+                    <th>Importe total</th>
+                </tr>
+                {% for c in resumen_contrapartidas_menos_3000 %}
+                <tr>
+                    <td>{{ c.contrapartida }}</td>
+                    <td>{{ c.nombre }}</td>
+                    <td>{{ '%.2f'|format(c.importe) if c.importe != 0 else '' }}{% if c.importe != 0 %} €{% endif %}</td>
+                </tr>
+                {% endfor %}
+                <tr style="font-weight:bold; background:#fff3e0;">
+                    <td colspan="2" style="text-align:right;">Total < 3.000 €:</td>
+                    <td>{{ '%.2f'|format(total_importe_menos_3000) if total_importe_menos_3000 != 0 else '' }}{% if total_importe_menos_3000 != 0 %} €{% endif %}</td>
+                </tr>
+            </table>
+            {% endif %}
+            
+            <div style="margin-top: 30px; padding: 15px; background: #e3eaf2; border-radius: 8px; text-align: center;">
+                <strong>Total General: {{ '%.2f'|format(total_importe) if total_importe != 0 else '' }}{% if total_importe != 0 %} €{% endif %}</strong>
+            </div>
         {% endif %}
     </div>
 </body>
