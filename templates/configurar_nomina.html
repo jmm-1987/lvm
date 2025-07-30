@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurar Nómina</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 1.1em;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+        }
+        
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .amount-group {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+        }
+        
+        .amount-group h3 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 1.3em;
+        }
+        
+        .amount-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+        
+        .buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+        
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+        
+        .flash-message {
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        
+        .flash-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .flash-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .info-box h4 {
+            margin: 0 0 10px 0;
+            color: #1976d2;
+        }
+        
+        .info-box p {
+            margin: 0;
+            color: #424242;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚙️ Configurar Nómina</h1>
+            <p>Define los parámetros para generar nóminas de todos los empleados</p>
+        </div>
+        
+        <div class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="flash-message flash-{{ category }}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            <div class="info-box">
+                <h4>📋 Información</h4>
+                <p>Configura aquí los valores que se aplicarán a todos los empleados. Después podrás revisar y ajustar los movimientos antes de generarlos.</p>
+            </div>
+            
+            <form method="POST">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fecha_trabajo">📅 Fecha de trabajo:</label>
+                        <input type="text" id="fecha_trabajo" name="fecha_trabajo" value="{{ config.fecha_trabajo }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="fecha_factura">📅 Fecha de factura:</label>
+                        <input type="text" id="fecha_factura" name="fecha_factura" value="{{ config.fecha_factura }}" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="num_factura">📄 Número de factura:</label>
+                    <input type="text" id="num_factura" name="num_factura" value="{{ config.num_factura }}" required>
+                </div>
+                
+                <div class="amount-group">
+                    <h3>💰 Importes por empleado</h3>
+                    <div class="amount-row">
+                        <div class="form-group">
+                            <label for="sueldo_base">💵 Sueldo base:</label>
+                            <input type="number" id="sueldo_base" name="sueldo_base" value="{{ config.sueldo_base }}" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="retencion_irpf">🏛️ Retención IRPF:</label>
+                            <input type="number" id="retencion_irpf" name="retencion_irpf" value="{{ config.retencion_irpf }}" step="0.01" required>
+                        </div>
+                    </div>
+                    <div class="amount-row">
+                        <div class="form-group">
+                            <label for="ss_trabajador">👤 SS Trabajador:</label>
+                            <input type="number" id="ss_trabajador" name="ss_trabajador" value="{{ config.ss_trabajador }}" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="ss_empresa">🏢 SS Empresa:</label>
+                            <input type="number" id="ss_empresa" name="ss_empresa" value="{{ config.ss_empresa }}" step="0.01" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="dietas">🍽️ Dietas:</label>
+                        <input type="number" id="dietas" name="dietas" value="{{ config.dietas }}" step="0.01" required>
+                    </div>
+                </div>
+                
+                <div class="buttons">
+                    <button type="submit" class="btn btn-primary">💾 Guardar y Continuar</button>
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary">🔙 Volver</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        // Formatear fechas automáticamente
+        function formatDate(input) {
+            let value = input.value.replace(/\D/g, '');
+            if (value.length >= 2) {
+                value = value.substring(0, 2) + '/' + value.substring(2);
+            }
+            if (value.length >= 5) {
+                value = value.substring(0, 5) + '/' + value.substring(5, 9);
+            }
+            input.value = value;
+        }
+        
+        document.getElementById('fecha_trabajo').addEventListener('input', function() {
+            formatDate(this);
+        });
+        
+        document.getElementById('fecha_factura').addEventListener('input', function() {
+            formatDate(this);
+        });
+    </script>
+</body>
+</html> 

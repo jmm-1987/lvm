@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ver Todas las Nóminas</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .stat-card h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .stat-card .value {
+            font-size: 1.8em;
+            font-weight: bold;
+        }
+        
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .table-header {
+            background: #f8f9fa;
+            padding: 20px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .table-header h3 {
+            margin: 0;
+            color: #495057;
+            font-size: 1.3em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .table-wrapper {
+            overflow-x: auto;
+        }
+        
+        .nominas-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+        
+        .nominas-table th {
+            background: #f8f9fa;
+            padding: 15px 10px;
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #e9ecef;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .nominas-table td {
+            padding: 12px 10px;
+            border-bottom: 1px solid #f1f3f4;
+            vertical-align: middle;
+        }
+        
+        .nominas-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .employee-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .employee-avatar {
+            width: 35px;
+            height: 35px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        
+        .employee-details h4 {
+            margin: 0;
+            color: #212529;
+            font-size: 1em;
+        }
+        
+        .employee-dni {
+            color: #6c757d;
+            font-size: 0.8em;
+        }
+        
+        .employee-history {
+            color: #28a745;
+            font-size: 0.8em;
+            font-weight: 500;
+            margin-top: 3px;
+        }
+        
+        .amount-cell {
+            text-align: right;
+            font-weight: 500;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .positive {
+            color: #28a745;
+        }
+        
+        .negative {
+            color: #dc3545;
+        }
+        
+        .total-cell {
+            text-align: right;
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #28a745;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .actions-cell {
+            text-align: center;
+        }
+        
+        .btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.8em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            margin: 2px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(40, 167, 69, 0.3);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-1px);
+        }
+        
+        .buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+        
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+        
+        .flash-message {
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        
+        .flash-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .flash-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+        
+        .empty-state h3 {
+            margin: 0 0 15px 0;
+            color: #495057;
+        }
+        
+        .empty-state p {
+            margin: 0;
+            font-size: 1.1em;
+        }
+        
+        .config-section {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .config-section h3 {
+            margin: 0 0 20px 0;
+            color: #495057;
+            font-size: 1.4em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .config-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .config-item label {
+            display: block;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+        
+        .config-item .value {
+            font-size: 1.1em;
+            color: #212529;
+            font-weight: 500;
+        }
+        
+        .config-actions {
+            text-align: center;
+        }
+        
+        .generate-all-section {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 10px;
+            padding: 25px;
+            margin-top: 30px;
+        }
+        
+        .generate-all-section .warning-box {
+            background: transparent;
+            border: none;
+            padding: 0;
+            margin-bottom: 20px;
+        }
+        
+        .generate-all-section .warning-box h4 {
+            color: #856404;
+            margin: 0 0 10px 0;
+        }
+        
+        .generate-all-section .warning-box p {
+            color: #856404;
+            margin: 0;
+        }
+        
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            animation: modalSlideIn 0.3s ease-out;
+        }
+        
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px 15px 0 0;
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        
+        .modal-body {
+            padding: 30px;
+        }
+        
+        .modal-form-group {
+            margin-bottom: 20px;
+        }
+        
+        .modal-form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .modal-form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+        }
+        
+        .modal-form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .modal-form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .modal-footer {
+            padding: 20px 30px;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            gap: 15px;
+            justify-content: flex-end;
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+        
+        .close:hover {
+            color: white;
+        }
+        
+        @media (max-width: 1200px) {
+            .nominas-table {
+                font-size: 0.8em;
+            }
+            
+            .nominas-table th,
+            .nominas-table td {
+                padding: 8px 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Todas las Nóminas</h1>
+            <p>Vista completa de todos los empleados y sus configuraciones de nómina</p>
+        </div>
+        
+        <div class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="flash-message flash-{{ category }}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            {% if empleados_config %}
+                <div class="summary-stats">
+                    <div class="stat-card">
+                        <h3>👥 Total Empleados</h3>
+                        <div class="value">{{ empleados_config|length }}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>💰 Total Nóminas</h3>
+                        <div class="value">{{ "%.2f"|format(empleados_config|sum(attribute='total')) }} €</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>📈 Promedio</h3>
+                        <div class="value">{{ "%.2f"|format((empleados_config|sum(attribute='total')) / empleados_config|length) }} €</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>📅 Fecha</h3>
+                        <div class="value">{{ general_config.fecha_trabajo }}</div>
+                    </div>
+                </div>
+                
+                <div class="config-section">
+                    <h3>⚙️ Configuración General</h3>
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label>📅 Fecha de trabajo:</label>
+                            <div class="value">{{ general_config.fecha_trabajo }}</div>
+                        </div>
+                        <div class="config-item">
+                            <label>📅 Fecha de factura:</label>
+                            <div class="value">{{ general_config.fecha_factura }}</div>
+                        </div>
+                        <div class="config-item">
+                            <label>📄 Número de factura:</label>
+                            <div class="value">{{ general_config.num_factura }}</div>
+                        </div>
+                    </div>
+                    <div class="config-actions">
+                        <a href="{{ url_for('configurar_general_nominas') }}" class="btn btn-primary">⚙️ Modificar Configuración General</a>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <div class="table-header">
+                        <h3>📋 Detalle de Nóminas</h3>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="nominas-table">
+                            <thead>
+                                <tr>
+                                    <th>👤 Empleado</th>
+                                    <th>💵 Sueldo Base</th>
+                                    <th>🏛️ Retención IRPF</th>
+                                    <th>👤 SS Trabajador</th>
+                                    <th>🏢 SS Empresa</th>
+                                    <th>🍽️ Dietas</th>
+                                    <th>💰 Total</th>
+                                    <th>⚙️ Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in empleados_config %}
+                                <tr>
+                                    <td>
+                                        <div class="employee-info">
+                                            <div class="employee-avatar">
+                                                {{ item.empleado.nombre.split(' ')[0][0] }}{{ item.empleado.nombre.split(' ')[1][0] if item.empleado.nombre.split(' ')|length > 1 else '' }}
+                                            </div>
+                                            <div class="employee-details">
+                                                <h4>{{ item.empleado.nombre.replace('EMP ', '') }}</h4>
+                                                <div class="employee-dni">{{ item.empleado.cuenta }}</div>
+                                                {% if item.tiene_ultima_nomina %}
+                                                <div class="employee-history">📋 Última nómina cargada</div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="amount-cell positive">{{ "%.2f"|format(item.config.sueldo_base) }} €</td>
+                                    <td class="amount-cell negative">-{{ "%.2f"|format(item.config.retencion_irpf) }} €</td>
+                                    <td class="amount-cell negative">-{{ "%.2f"|format(item.config.ss_trabajador) }} €</td>
+                                    <td class="amount-cell positive">{{ "%.2f"|format(item.config.ss_empresa) }} €</td>
+                                    <td class="amount-cell positive">{{ "%.2f"|format(item.config.dietas) }} €</td>
+                                    <td class="total-cell">{{ "%.2f"|format(item.total) }} €</td>
+                                    <td class="actions-cell">
+                                        <button onclick="abrirModalEditar({{ item.empleado.id }}, '{{ item.empleado.nombre }}', {{ item.config.sueldo_base }}, {{ item.config.retencion_irpf }}, {{ item.config.ss_trabajador }}, {{ item.config.ss_empresa }}, {{ item.config.dietas }})" class="btn btn-primary">
+                                            ⚙️
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="generate-all-section">
+                    <div class="warning-box">
+                        <h4>⚠️ Atención</h4>
+                        <p>Se van a generar {{ empleados_config|length }} movimientos de nómina con la configuración actual. Esta acción no se puede deshacer.</p>
+                    </div>
+                    <form method="POST" action="{{ url_for('generar_todas_nominas') }}" style="text-align: center;">
+                        <button type="submit" class="btn btn-success" style="font-size: 1.2em; padding: 15px 40px;" onclick="return confirm('¿Estás seguro de que quieres generar {{ empleados_config|length }} movimientos de nómina?')">
+                            💰 Generar Todas las Nóminas
+                        </button>
+                    </form>
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <h3>📭 No hay empleados</h3>
+                    <p>No se encontraron empleados en la base de datos. Asegúrate de que existan cuentas de contrapartida con el prefijo "EMP".</p>
+                </div>
+            {% endif %}
+            
+            <div class="buttons">
+                <a href="{{ url_for('configurar_general_nominas') }}" class="btn btn-primary">⚙️ Configurar General</a>
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">🔙 Volver al Inicio</a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal para editar empleado -->
+    <div id="modalEditar" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close" onclick="cerrarModal()">&times;</span>
+                <h3 id="modalTitulo">Editar Nómina</h3>
+            </div>
+            <form id="formEditarEmpleado" method="POST">
+                <div class="modal-body">
+                    <div class="modal-form-row">
+                        <div class="modal-form-group">
+                            <label for="modalSueldoBase">💵 Sueldo base:</label>
+                            <input type="number" id="modalSueldoBase" name="sueldo_base" step="0.01" required>
+                        </div>
+                        <div class="modal-form-group">
+                            <label for="modalRetencionIrpf">🏛️ Retención IRPF:</label>
+                            <input type="number" id="modalRetencionIrpf" name="retencion_irpf" step="0.01" required>
+                        </div>
+                    </div>
+                    <div class="modal-form-row">
+                        <div class="modal-form-group">
+                            <label for="modalSsTrabajador">👤 SS Trabajador:</label>
+                            <input type="number" id="modalSsTrabajador" name="ss_trabajador" step="0.01" required>
+                        </div>
+                        <div class="modal-form-group">
+                            <label for="modalSsEmpresa">🏢 SS Empresa:</label>
+                            <input type="number" id="modalSsEmpresa" name="ss_empresa" step="0.01" required>
+                        </div>
+                    </div>
+                    <div class="modal-form-group">
+                        <label for="modalDietas">🍽️ Dietas:</label>
+                        <input type="number" id="modalDietas" name="dietas" step="0.01" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="cerrarModal()">❌ Cancelar</button>
+                    <button type="submit" class="btn btn-primary">💾 Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        let empleadoActualId = null;
+        
+        function abrirModalEditar(empleadoId, nombre, sueldoBase, retencionIrpf, ssTrabajador, ssEmpresa, dietas) {
+            empleadoActualId = empleadoId;
+            
+            // Actualizar título del modal (quitar prefijo EMP)
+            const nombreSinEmp = nombre.replace('EMP ', '');
+            document.getElementById('modalTitulo').textContent = `Editar Nómina - ${nombreSinEmp}`;
+            
+            // Llenar los campos con los valores actuales
+            document.getElementById('modalSueldoBase').value = sueldoBase;
+            document.getElementById('modalRetencionIrpf').value = retencionIrpf;
+            document.getElementById('modalSsTrabajador').value = ssTrabajador;
+            document.getElementById('modalSsEmpresa').value = ssEmpresa;
+            document.getElementById('modalDietas').value = dietas;
+            
+            // Actualizar action del formulario
+            document.getElementById('formEditarEmpleado').action = `/guardar_config_empleado/${empleadoId}`;
+            
+            // Mostrar modal
+            document.getElementById('modalEditar').style.display = 'block';
+        }
+        
+        function cerrarModal() {
+            document.getElementById('modalEditar').style.display = 'none';
+            empleadoActualId = null;
+        }
+        
+        // Cerrar modal al hacer clic fuera de él
+        window.onclick = function(event) {
+            const modal = document.getElementById('modalEditar');
+            if (event.target === modal) {
+                cerrarModal();
+            }
+        }
+        
+        // Cerrar modal con ESC
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                cerrarModal();
+            }
+        });
+    </script>
+</body>
+</html> 

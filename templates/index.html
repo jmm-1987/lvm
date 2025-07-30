@@ -336,10 +336,10 @@
                             ⚙️
                             <span class="tooltiptext">Configuración</span>
                         </button>
-                        <div class="dropdown-content">
-                            <a href="/exportar_csv">📤 Exportar CSV</a>
-                            <a href="/importar_csv">📥 Importar CSV</a>
-                            <a href="/descargar_db">💾 Descargar BD</a>
+                        <div class="dropdown-content" id="dropdownContent">
+                            <a href="{{ url_for('exportar_csv') }}">📊 Exportar CSV</a>
+                            <a href="{{ url_for('importar_csv') }}">📥 Importar CSV</a>
+                            <a href="{{ url_for('descargar_db') }}">💾 Descargar DB</a>
                         </div>
                     </div>
                     
@@ -414,6 +414,52 @@
                     </a>
                 </div>
             </div>
+
+                <div class="tools-section">
+                    <h2>🛠️ Herramientas</h2>
+                    <div class="tools-grid">
+                        <a href="{{ url_for('listar_movimientos') }}" class="tool-card">
+                            <div class="tool-icon">📊</div>
+                            <h3>Movimientos</h3>
+                            <p>Gestionar movimientos contables</p>
+                        </a>
+                        <a href="{{ url_for('listar_cuentas') }}" class="tool-card">
+                            <div class="tool-icon">📋</div>
+                            <h3>Cuentas</h3>
+                            <p>Administrar plan de cuentas</p>
+                        </a>
+                        <a href="{{ url_for('resultado_explotacion') }}" class="tool-card">
+                            <div class="tool-icon">📈</div>
+                            <h3>Resultado Explotación</h3>
+                            <p>Ver resultado de explotación</p>
+                        </a>
+                        <a href="{{ url_for('informe_347') }}" class="tool-card">
+                            <div class="tool-icon">📋</div>
+                            <h3>Informe 347</h3>
+                            <p>Generar informe 347</p>
+                        </a>
+                        <a href="{{ url_for('retencion_alquileres') }}" class="tool-card">
+                            <div class="tool-icon">🏠</div>
+                            <h3>Retención Alquileres</h3>
+                            <p>Gestionar retenciones de alquileres</p>
+                        </a>
+                        <a href="{{ url_for('retencion_empleados') }}" class="tool-card">
+                            <div class="tool-icon">👥</div>
+                            <h3>Retención Empleados</h3>
+                            <p>Gestionar retenciones de empleados</p>
+                        </a>
+                        <a href="{{ url_for('ver_todas_nominas') }}" class="tool-card">
+                            <div class="tool-icon">💰</div>
+                            <h3>Gestionar Nóminas</h3>
+                            <p>Configurar y generar nóminas para empleados</p>
+                        </a>
+                        <a href="{{ url_for('configurar_general_nominas') }}" class="tool-card">
+                            <div class="tool-icon">⚙️</div>
+                            <h3>Configurar Nóminas</h3>
+                            <p>Definir parámetros generales de nóminas</p>
+                        </a>
+                    </div>
+                </div>
         </div>
     </div>
     

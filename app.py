@@ -1,13 +1,17 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
-from flask_sqlalchemy import SQLAlchemy
 import os
-from datetime import datetime, date
-import paramiko
-from apscheduler.schedulers.background import BackgroundScheduler
+import sqlite3
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, Response
+from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, timedelta
 import csv
 import io
+import zipfile
+import tempfile
+import shutil
+import paramiko
+import re
 
 app = Flask(__name__)
 app.secret_key = 'pon_aqui_una_clave_secreta_larga_y_unica'
@@ -77,8 +81,8 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        lvm_password = os.environ.get('LVM_PASSWORD')
-        #lvm_password = "1"
+        #lvm_password = os.environ.get('LVM_PASSWORD')
+        lvm_password = "1"
         if username == 'lvm' and lvm_password and password == lvm_password:
             user = UsuarioFalso('lvm')
             login_user(user)
@@ -171,16 +175,16 @@ def listar_movimientos():
             contrapartida = None
         contrapartida_por_mov[mov.id] = contrapartida
     # Calcular fechas por defecto
-    hoy = date.today()
+    hoy = datetime.today()
     mes = hoy.month
     if mes <= 3:
-        inicio_trimestre = date(hoy.year, 1, 1)
+        inicio_trimestre = datetime(hoy.year, 1, 1)
     elif mes <= 6:
-        inicio_trimestre = date(hoy.year, 4, 1)
+        inicio_trimestre = datetime(hoy.year, 4, 1)
     elif mes <= 9:
-        inicio_trimestre = date(hoy.year, 7, 1)
+        inicio_trimestre = datetime(hoy.year, 7, 1)
     else:
-        inicio_trimestre = date(hoy.year, 10, 1)
+        inicio_trimestre = datetime(hoy.year, 10, 1)
     fecha_desde_default = inicio_trimestre.strftime('%Y-%m-%d')
     fecha_hasta_default = hoy.strftime('%Y-%m-%d')
     return render_template('movimientos.html', movimientos=movimientos, conceptos_por_mov=conceptos_por_mov, contrapartida_por_mov=contrapartida_por_mov, fecha_desde_default=fecha_desde_default, fecha_hasta_default=fecha_hasta_default)
@@ -320,16 +324,16 @@ def resultado_explotacion():
     detalle = []
     diferencia = None
     # Calcular fechas por defecto
-    hoy = date.today()
+    hoy = datetime.today()
     mes = hoy.month
     if mes <= 3:
-        inicio_trimestre = date(hoy.year, 1, 1)
+        inicio_trimestre = datetime(hoy.year, 1, 1)
     elif mes <= 6:
-        inicio_trimestre = date(hoy.year, 4, 1)
+        inicio_trimestre = datetime(hoy.year, 4, 1)
     elif mes <= 9:
-        inicio_trimestre = date(hoy.year, 7, 1)
+        inicio_trimestre = datetime(hoy.year, 7, 1)
     else:
-        inicio_trimestre = date(hoy.year, 10, 1)
+        inicio_trimestre = datetime(hoy.year, 10, 1)
     fecha_inicio = inicio_trimestre.strftime('%Y-%m-%d')
     fecha_fin = hoy.strftime('%Y-%m-%d')
     resultado_explotacion = None
@@ -391,16 +395,16 @@ def resultado_iva():
     iva_repercutido = 0
     iva_soportado = 0
     # Calcular fechas por defecto
-    hoy = date.today()
+    hoy = datetime.today()
     mes = hoy.month
     if mes <= 3:
-        inicio_trimestre = date(hoy.year, 1, 1)
+        inicio_trimestre = datetime(hoy.year, 1, 1)
     elif mes <= 6:
-        inicio_trimestre = date(hoy.year, 4, 1)
+        inicio_trimestre = datetime(hoy.year, 4, 1)
     elif mes <= 9:
-        inicio_trimestre = date(hoy.year, 7, 1)
+        inicio_trimestre = datetime(hoy.year, 7, 1)
     else:
-        inicio_trimestre = date(hoy.year, 10, 1)
+        inicio_trimestre = datetime(hoy.year, 10, 1)
     fecha_inicio = inicio_trimestre.strftime('%Y-%m-%d')
     fecha_fin = hoy.strftime('%Y-%m-%d')
     desglose_checked = False
@@ -454,16 +458,16 @@ def resultado_iva():
 @app.route('/retencion_alquileres', methods=['GET', 'POST'])
 def retencion_alquileres():
     # Fechas por defecto: inicio de trimestre y hoy
-    hoy = date.today()
+    hoy = datetime.today()
     mes = hoy.month
     if mes <= 3:
-        inicio_trimestre = date(hoy.year, 1, 1)
+        inicio_trimestre = datetime(hoy.year, 1, 1)
     elif mes <= 6:
-        inicio_trimestre = date(hoy.year, 4, 1)
+        inicio_trimestre = datetime(hoy.year, 4, 1)
     elif mes <= 9:
-        inicio_trimestre = date(hoy.year, 7, 1)
+        inicio_trimestre = datetime(hoy.year, 7, 1)
     else:
-        inicio_trimestre = date(hoy.year, 10, 1)
+        inicio_trimestre = datetime(hoy.year, 10, 1)
     fecha_inicio = inicio_trimestre.strftime('%Y-%m-%d')
     fecha_fin = hoy.strftime('%Y-%m-%d')
     resultado = None
@@ -502,16 +506,16 @@ def retencion_alquileres():
 @app.route('/retencion_empleados', methods=['GET', 'POST'])
 def retencion_empleados():
     # Fechas por defecto: inicio de trimestre y hoy
-    hoy = date.today()
+    hoy = datetime.today()
     mes = hoy.month
     if mes <= 3:
-        inicio_trimestre = date(hoy.year, 1, 1)
+        inicio_trimestre = datetime(hoy.year, 1, 1)
     elif mes <= 6:
-        inicio_trimestre = date(hoy.year, 4, 1)
+        inicio_trimestre = datetime(hoy.year, 4, 1)
     elif mes <= 9:
-        inicio_trimestre = date(hoy.year, 7, 1)
+        inicio_trimestre = datetime(hoy.year, 7, 1)
     else:
-        inicio_trimestre = date(hoy.year, 10, 1)
+        inicio_trimestre = datetime(hoy.year, 10, 1)
     fecha_inicio = inicio_trimestre.strftime('%Y-%m-%d')
     fecha_fin = hoy.strftime('%Y-%m-%d')
     resultado = None
@@ -550,16 +554,16 @@ def retencion_empleados():
 @app.route('/347', methods=['GET', 'POST'])
 def informe_347():
     # Fechas por defecto: inicio de trimestre y hoy
-    hoy = date.today()
+    hoy = datetime.today()
     mes = hoy.month
     if mes <= 3:
-        inicio_trimestre = date(hoy.year, 1, 1)
+        inicio_trimestre = datetime(hoy.year, 1, 1)
     elif mes <= 6:
-        inicio_trimestre = date(hoy.year, 4, 1)
+        inicio_trimestre = datetime(hoy.year, 4, 1)
     elif mes <= 9:
-        inicio_trimestre = date(hoy.year, 7, 1)
+        inicio_trimestre = datetime(hoy.year, 7, 1)
     else:
-        inicio_trimestre = date(hoy.year, 10, 1)
+        inicio_trimestre = datetime(hoy.year, 10, 1)
     fecha_inicio = inicio_trimestre.strftime('%Y-%m-%d')
     fecha_fin = hoy.strftime('%Y-%m-%d')
     resumen_contrapartidas = []
@@ -943,6 +947,237 @@ def importar_csv():
     
     return render_template('importar_csv.html')
 
+@app.route('/extraer_nominas_pdf', methods=['GET', 'POST'])
+def extraer_nominas_pdf():
+    if request.method == 'GET':
+        return render_template('extraer_nominas.html')
+    
+    if 'pdf_file' not in request.files:
+        flash('No se seleccionó ningún archivo', 'error')
+        return redirect(request.url)
+    
+    file = request.files['pdf_file']
+    if file.filename == '':
+        flash('No se seleccionó ningún archivo', 'error')
+        return redirect(request.url)
+    
+    if file and file.filename.endswith('.pdf'):
+        try:
+            # Guardar el archivo subido
+            pdf_path = os.path.join(app.root_path, file.filename)
+            file.save(pdf_path)
+            print(f"PDF guardado en: {pdf_path}")
+            
+            # Extraer texto del PDF
+            texto_completo = ""
+            with open(pdf_path, 'rb') as pdf_file:
+                pdf_reader = PyPDF2.PdfReader(pdf_file)
+                for page_num in range(len(pdf_reader.pages)):
+                    page = pdf_reader.pages[page_num]
+                    texto_completo += page.extract_text() + "\n"
+            
+            print(f"Texto extraído: {len(texto_completo)} caracteres")
+            
+            # Extraer datos específicos
+            datos_nomina = extraer_datos_nomina(texto_completo)
+            
+            if not datos_nomina:
+                flash('No se pudieron extraer datos del PDF', 'error')
+                return redirect(request.url)
+            
+            # Crear Excel con los datos
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Datos Nóminas"
+            
+            # Encabezados
+            headers = ['Nombre Trabajador', 'Total Devengado', 'Total Aportaciones', 'IRPF', 'Líquido a Percibir', 'Total SS Empresa', 'Archivo PDF']
+            for col, header in enumerate(headers, 1):
+                ws.cell(row=1, column=col, value=header)
+            
+            # Datos
+            row = 2
+            ws.cell(row=row, column=1, value=datos_nomina.get('nombre_trabajador', ''))
+            ws.cell(row=row, column=2, value=datos_nomina.get('total_devengado', ''))
+            ws.cell(row=row, column=3, value=datos_nomina.get('total_aportaciones', ''))
+            ws.cell(row=row, column=4, value=datos_nomina.get('irpf', ''))
+            ws.cell(row=row, column=5, value=datos_nomina.get('liquido_percibir', ''))
+            ws.cell(row=row, column=6, value=datos_nomina.get('total_ss_empresa', ''))
+            ws.cell(row=row, column=7, value=file.filename)
+            
+            # Guardar Excel
+            excel_path_temp = os.path.join(app.root_path, f'nomina_datos_{datetime.now().strftime("%Y%m%d")}.xlsx')
+            wb.save(excel_path_temp)
+            wb.close()
+            
+            # Copiar a ubicación final
+            excel_path_final = os.path.join(app.root_path, f'nomina_datos_{datetime.now().strftime("%Y%m%d")}.xlsx')
+            shutil.copy2(excel_path_temp, excel_path_final)
+            
+            print(f"Excel guardado en: {excel_path_final}")
+            
+            # Limpiar archivo temporal
+            os.remove(pdf_path)
+            os.remove(excel_path_temp)
+            
+            flash('Datos extraídos correctamente', 'success')
+            
+            # Enviar archivo al usuario
+            response = send_file(
+                excel_path_final,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name=f'nomina_datos_{datetime.now().strftime("%Y%m%d")}.xlsx'
+            )
+            
+            @response.call_on_close
+            def cleanup():
+                try:
+                    os.remove(excel_path_final)
+                except:
+                    pass
+            
+            return response
+            
+        except Exception as e:
+            flash(f'Error al extraer datos de nóminas: {str(e)}', 'error')
+            return redirect(request.url)
+    else:
+        flash('Por favor selecciona un archivo PDF válido', 'error')
+        return redirect(request.url)
+
+def extraer_datos_nomina(texto):
+    """Extrae datos específicos del texto de la nómina"""
+    datos = {}
+    
+    # Dividir el texto en líneas para análisis más preciso
+    lineas = texto.split('\n')
+    
+    # Buscar nombres de trabajadores
+    for i, linea in enumerate(lineas):
+        if 'LOGISTICA VENANCIO MATEOS SL' in linea:
+            # Buscar en las siguientes líneas el nombre
+            for j in range(i+1, min(i+5, len(lineas))):
+                nombre_match = re.search(r'([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)', lineas[j])
+                if nombre_match:
+                    datos['nombre_trabajador'] = nombre_match.group(1).strip()
+                    print(f"Encontrado nombre_trabajador: {datos['nombre_trabajador']}")
+                    break
+            break
+    
+    # Buscar total devengado - está en la línea que contiene "A. TOTAL DEVENGADO"
+    for linea in lineas:
+        if 'A. TOTAL DEVENGADO' in linea:
+            # Buscar números en esa línea
+            numeros = re.findall(r'([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)', linea)
+            if numeros:
+                datos['total_devengado'] = numeros[-1].replace(',', '.')  # Tomar el último número
+                print(f"Encontrado total_devengado: {datos['total_devengado']}")
+            break
+    
+    # Buscar total aportaciones - está en la línea que contiene "1-.TOTAL APORTACIONES"
+    for linea in lineas:
+        if '1-.TOTAL APORTACIONES' in linea:
+            numeros = re.findall(r'([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)', linea)
+            if numeros:
+                datos['total_aportaciones'] = numeros[-1].replace(',', '.')
+                print(f"Encontrado total_aportaciones: {datos['total_aportaciones']}")
+            break
+    
+    # Buscar IRPF - está en la línea que contiene "2-. I.R.P.F"
+    for linea in lineas:
+        if '2-. I.R.P.F' in linea:
+            numeros = re.findall(r'([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)', linea)
+            if numeros:
+                datos['irpf'] = numeros[-1].replace(',', '.')
+                print(f"Encontrado irpf: {datos['irpf']}")
+            break
+    
+    # Buscar líquido a percibir - está en la línea que contiene "LIQUIDO TOTAL A PERCIBIR"
+    for linea in lineas:
+        if 'LIQUIDO TOTAL A PERCIBIR' in linea:
+            numeros = re.findall(r'([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)', linea)
+            if numeros:
+                datos['liquido_percibir'] = numeros[-1].replace(',', '.')
+                print(f"Encontrado liquido_percibir: {datos['liquido_percibir']}")
+            break
+    
+    # Buscar total SS empresa - está en la línea que contiene "Total SS Empresa"
+    for linea in lineas:
+        if 'Total SS Empresa' in linea:
+            numeros = re.findall(r'([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)', linea)
+            if numeros:
+                datos['total_ss_empresa'] = numeros[-1].replace(',', '.')
+                print(f"Encontrado total_ss_empresa: {datos['total_ss_empresa']}")
+            break
+    
+    # Si no encuentra los datos con los patrones específicos, buscar de forma más general
+    if 'total_devengado' not in datos:
+        # Buscar números grandes que podrían ser el total devengado
+        devengados_general = re.findall(r'([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)\s*\.{10,}', texto)
+        if devengados_general:
+            datos['total_devengado'] = devengados_general[0].replace(',', '.')
+            print(f"Encontrado total_devengado (general): {datos['total_devengado']}")
+    
+    if 'total_aportaciones' not in datos:
+        # Buscar números después de "TOTAL APORTACIONES"
+        aportaciones_general = re.findall(r'TOTAL\s*APORTACIONES[^\d]*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)', texto)
+        if aportaciones_general:
+            datos['total_aportaciones'] = aportaciones_general[0].replace(',', '.')
+            print(f"Encontrado total_aportaciones (general): {datos['total_aportaciones']}")
+    
+    if 'irpf' not in datos:
+        # Buscar números después de "I.R.P.F"
+        irpf_general = re.findall(r'I\.R\.P\.F[^\d]*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)', texto)
+        if irpf_general:
+            datos['irpf'] = irpf_general[0].replace(',', '.')
+            print(f"Encontrado irpf (general): {datos['irpf']}")
+    
+    if 'liquido_percibir' not in datos:
+        # Buscar números después de "A PERCIBIR"
+        liquidos_general = re.findall(r'A\s*PERCIBIR[^\d]*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)', texto)
+        if liquidos_general:
+            datos['liquido_percibir'] = liquidos_general[0].replace(',', '.')
+            print(f"Encontrado liquido_percibir (general): {datos['liquido_percibir']}")
+    
+    if 'total_ss_empresa' not in datos:
+        # Buscar números después de "SS Empresa"
+        ss_general = re.findall(r'SS\s*Empresa[^\d]*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)', texto)
+        if ss_general:
+            datos['total_ss_empresa'] = ss_general[0].replace(',', '.')
+            print(f"Encontrado total_ss_empresa (general): {datos['total_ss_empresa']}")
+    
+    return datos
+
+@app.route('/test_pdf_extraction')
+def test_pdf_extraction():
+    """Función de prueba para extraer texto del PDF"""
+    pdf_path = os.path.join(app.root_path, 'LOGISTICA VENANCIO JULIO.pdf')
+    
+    if not os.path.exists(pdf_path):
+        return f"<h3>Error: No se encontró el archivo PDF en {pdf_path}</h3>"
+    
+    try:
+        texto_completo = ""
+        with open(pdf_path, 'rb') as pdf_file:
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            for page_num in range(len(pdf_reader.pages)):
+                page = pdf_reader.pages[page_num]
+                texto_pagina = page.extract_text()
+                texto_completo += f"--- PÁGINA {page_num + 1} ---\n{texto_pagina}\n\n"
+        
+        return f"""
+        <h3>Texto extraído del PDF</h3>
+        <p><strong>Total de caracteres extraídos:</strong> {len(texto_completo)}</p>
+        <p><strong>Archivo:</strong> LOGISTICA VENANCIO JULIO.pdf</p>
+        <p><strong>Número de páginas:</strong> {len(pdf_reader.pages)}</p>
+        <hr>
+        <pre style="max-height: 500px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; background-color: #f9f9f9;">{texto_completo}</pre>
+        """
+        
+    except Exception as e:
+        return f"<h3>Error al extraer texto del PDF:</h3><p>{str(e)}</p>"
+
 @app.route('/guardar_cambios', methods=['POST'])
 @login_required
 def guardar_cambios():
@@ -967,6 +1202,229 @@ def datetimeformat(value, format='%d/%m/%Y'):
         return datetime.strptime(value, '%Y-%m-%d').strftime(format)
     except Exception:
         return value
+
+@app.route('/configurar_general_nominas', methods=['GET', 'POST'])
+@login_required
+def configurar_general_nominas():
+    if request.method == 'POST':
+        # Guardar configuración general
+        session['nomina_general_config'] = {
+            'fecha_trabajo': request.form['fecha_trabajo'],
+            'fecha_factura': request.form['fecha_factura'],
+            'num_factura': request.form['num_factura']
+        }
+        flash('Configuración general de nóminas guardada correctamente.', 'success')
+        return redirect(url_for('ver_todas_nominas'))
+    
+    # Cargar configuración existente o valores por defecto
+    config = session.get('nomina_general_config', {
+        'fecha_trabajo': datetime.now().strftime('%d/%m/%Y'),
+        'fecha_factura': datetime.now().strftime('%d/%m/%Y'),
+        'num_factura': f'Nómina {datetime.now().strftime("%B %Y")}'
+    })
+    
+    return render_template('configurar_general_nominas.html', config=config)
+
+@app.route('/generar_todas_nominas', methods=['POST'])
+@login_required
+def generar_todas_nominas():
+    # Obtener configuración general
+    general_config = session.get('nomina_general_config')
+    if not general_config:
+        flash('Debe configurar los parámetros generales primero.', 'error')
+        return redirect(url_for('configurar_general_nominas'))
+    
+    # Obtener todos los empleados
+    empleados = Cuenta.query.filter(
+        Cuenta.tipo == 'contrapartida',
+        Cuenta.nombre.like('EMP%')
+    ).all()
+    
+    if not empleados:
+        flash('No se encontraron empleados en la base de datos.', 'error')
+        return redirect(url_for('configurar_general_nominas'))
+    
+    # Obtener cuentas necesarias
+    cuentas = {
+        'sueldos': Cuenta.query.filter_by(cuenta='640000000001').first(),
+        'retencion': Cuenta.query.filter_by(cuenta='47510000001').first(),
+        'ss_trabajador': Cuenta.query.filter_by(cuenta='642000000002').first(),
+        'ss_empresa': Cuenta.query.filter_by(cuenta='642000000001').first(),
+        'dietas': Cuenta.query.filter_by(cuenta='649000000002').first()
+    }
+    
+    # Verificar que todas las cuentas existen
+    cuentas_faltantes = [k for k, v in cuentas.items() if not v]
+    if cuentas_faltantes:
+        flash(f'Faltan las siguientes cuentas: {", ".join(cuentas_faltantes)}', 'error')
+        return redirect(url_for('configurar_general_nominas'))
+    
+    movimientos_creados = 0
+    
+    for empleado in empleados:
+        # Buscar la última nómina del empleado para valores predeterminados
+        ultima_nomina = Movimiento.query.filter(
+            Movimiento.num_factura.like(f'%{empleado.nombre}%'),
+            Movimiento.tipo == 'Gasto'
+        ).order_by(Movimiento.fecha_trabajo.desc()).first()
+        
+        # Valores por defecto
+        valores_default = {
+            'sueldo_base': 1200.00,
+            'retencion_irpf': 50.00,
+            'ss_trabajador': 80.00,
+            'ss_empresa': 500.00,
+            'dietas': 600.00
+        }
+        
+        # Si existe una nómina anterior, usar esos valores
+        if ultima_nomina:
+            conceptos = MovimientoConcepto.query.filter_by(movimiento_id=ultima_nomina.id).all()
+            
+            for concepto in conceptos:
+                if concepto.cuenta.cuenta == '640000000001':  # Sueldos
+                    valores_default['sueldo_base'] = concepto.importe
+                elif concepto.cuenta.cuenta == '47510000001':  # Retención
+                    valores_default['retencion_irpf'] = concepto.importe
+                elif concepto.cuenta.cuenta == '642000000002':  # SS Trabajador
+                    valores_default['ss_trabajador'] = concepto.importe
+                elif concepto.cuenta.cuenta == '642000000001':  # SS Empresa
+                    valores_default['ss_empresa'] = concepto.importe
+                elif concepto.cuenta.cuenta == '649000000002':  # Dietas
+                    valores_default['dietas'] = concepto.importe
+        
+        # Obtener configuración específica del empleado
+        config_key = f'nomina_config_{empleado.id}'
+        empleado_config = session.get(config_key, valores_default)
+        
+        # Crear movimiento principal
+        movimiento = Movimiento(
+            tipo='Gasto',
+            fecha_trabajo=datetime.strptime(general_config['fecha_trabajo'], '%d/%m/%Y'),
+            fecha_factura=datetime.strptime(general_config['fecha_factura'], '%d/%m/%Y'),
+            num_factura=f"{general_config['num_factura']} - {empleado.nombre}"
+        )
+        db.session.add(movimiento)
+        db.session.flush()  # Para obtener el ID del movimiento
+        
+        # Crear conceptos del movimiento
+        conceptos = [
+            (cuentas['sueldos'], empleado_config['sueldo_base']),
+            (cuentas['retencion'], empleado_config['retencion_irpf']),
+            (cuentas['ss_trabajador'], empleado_config['ss_trabajador']),
+            (cuentas['ss_empresa'], empleado_config['ss_empresa']),
+            (cuentas['dietas'], empleado_config['dietas'])
+        ]
+        
+        for cuenta, importe in conceptos:
+            concepto = MovimientoConcepto(
+                movimiento_id=movimiento.id,
+                cuenta_id=cuenta.id,
+                contrapartida_id=empleado.id,
+                importe=importe,
+                concepto=''
+            )
+            db.session.add(concepto)
+        
+        movimientos_creados += 1
+        
+        # Limpiar configuración específica del empleado
+        session.pop(config_key, None)
+    
+    try:
+        db.session.commit()
+        flash(f'Se han creado {movimientos_creados} movimientos de nómina correctamente.', 'success')
+        # Limpiar configuración general
+        session.pop('nomina_general_config', None)
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al crear los movimientos: {str(e)}', 'error')
+    
+    return redirect(url_for('listar_movimientos'))
+
+@app.route('/ver_todas_nominas')
+@login_required
+def ver_todas_nominas():
+    # Obtener configuración general
+    general_config = session.get('nomina_general_config', {
+        'fecha_trabajo': datetime.now().strftime('%d/%m/%Y'),
+        'fecha_factura': datetime.now().strftime('%d/%m/%Y'),
+        'num_factura': f'Nómina {datetime.now().strftime("%B %Y")}'
+    })
+    
+    # Obtener todos los empleados
+    empleados = Cuenta.query.filter(
+        Cuenta.tipo == 'contrapartida',
+        Cuenta.nombre.like('EMP%')
+    ).order_by(Cuenta.nombre).all()
+    
+    # Obtener configuraciones de cada empleado
+    empleados_config = []
+    for empleado in empleados:
+        # Buscar la última nómina del empleado
+        ultima_nomina = Movimiento.query.filter(
+            Movimiento.num_factura.like(f'%{empleado.nombre}%'),
+            Movimiento.tipo == 'Gasto'
+        ).order_by(Movimiento.fecha_trabajo.desc()).first()
+        
+        # Valores por defecto
+        valores_default = {
+            'sueldo_base': 1200.00,
+            'retencion_irpf': 50.00,
+            'ss_trabajador': 80.00,
+            'ss_empresa': 500.00,
+            'dietas': 600.00
+        }
+        
+        # Si existe una nómina anterior, usar esos valores
+        if ultima_nomina:
+            conceptos = MovimientoConcepto.query.filter_by(movimiento_id=ultima_nomina.id).all()
+            
+            for concepto in conceptos:
+                if concepto.cuenta.cuenta == '640000000001':  # Sueldos
+                    valores_default['sueldo_base'] = concepto.importe
+                elif concepto.cuenta.cuenta == '47510000001':  # Retención
+                    valores_default['retencion_irpf'] = concepto.importe
+                elif concepto.cuenta.cuenta == '642000000002':  # SS Trabajador
+                    valores_default['ss_trabajador'] = concepto.importe
+                elif concepto.cuenta.cuenta == '642000000001':  # SS Empresa
+                    valores_default['ss_empresa'] = concepto.importe
+                elif concepto.cuenta.cuenta == '649000000002':  # Dietas
+                    valores_default['dietas'] = concepto.importe
+        
+        # Obtener configuración actual o usar valores de la última nómina
+        config_key = f'nomina_config_{empleado.id}'
+        empleado_config = session.get(config_key, valores_default)
+        
+        # Calcular total
+        total = empleado_config['sueldo_base'] + empleado_config['ss_empresa'] + empleado_config['dietas'] - empleado_config['retencion_irpf'] - empleado_config['ss_trabajador']
+        
+        empleados_config.append({
+            'empleado': empleado,
+            'config': empleado_config,
+            'total': total,
+            'tiene_ultima_nomina': ultima_nomina is not None
+        })
+    
+    return render_template('ver_todas_nominas.html', empleados_config=empleados_config, general_config=general_config)
+
+@app.route('/guardar_config_empleado/<int:empleado_id>', methods=['POST'])
+@login_required
+def guardar_config_empleado(empleado_id):
+    empleado = Cuenta.query.get_or_404(empleado_id)
+    
+    # Guardar configuración específica del empleado
+    config_key = f'nomina_config_{empleado_id}'
+    session[config_key] = {
+        'sueldo_base': float(request.form['sueldo_base']),
+        'retencion_irpf': float(request.form['retencion_irpf']),
+        'ss_trabajador': float(request.form['ss_trabajador']),
+        'ss_empresa': float(request.form['ss_empresa']),
+        'dietas': float(request.form['dietas'])
+    }
+    
+    flash(f'Configuración de {empleado.nombre} guardada correctamente.', 'success')
+    return redirect(url_for('ver_todas_nominas'))
 
 if __name__ == '__main__':
     with app.app_context():
