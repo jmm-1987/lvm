@@ -265,12 +265,12 @@ function habilitarEdicion() {
                 </div>
                 <div style="flex: 1;">
                     <label>Fecha trabajo:
-                        <input type="date" name="fecha_trabajo" id="fecha_trabajo" class="fecha-input" value="{{ movimiento.fecha_trabajo if movimiento else '' }}" required {% if solo_lectura %}disabled{% endif %}>
+                        <input type="date" name="fecha_trabajo" id="fecha_trabajo" class="fecha-input" value="{{ movimiento.fecha_trabajo|dateinput if movimiento else '' }}" required {% if solo_lectura %}disabled{% endif %}>
                     </label>
                 </div>
                 <div style="flex: 1;">
                     <label>Fecha factura:
-                        <input type="date" name="fecha_factura" id="fecha_factura" class="fecha-input" value="{{ movimiento.fecha_factura if movimiento else '' }}" required {% if solo_lectura %}disabled{% endif %}>
+                        <input type="date" name="fecha_factura" id="fecha_factura" class="fecha-input" value="{{ movimiento.fecha_factura|dateinput if movimiento else '' }}" required {% if solo_lectura %}disabled{% endif %}>
                     </label>
                 </div>
             </div>

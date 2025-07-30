@@ -12,6 +12,8 @@ import tempfile
 import shutil
 import paramiko
 import re
+import PyPDF2
+from openpyxl import Workbook
 
 app = Flask(__name__)
 app.secret_key = 'pon_aqui_una_clave_secreta_larga_y_unica'
@@ -341,15 +343,39 @@ def resultado_explotacion():
         fecha_inicio = request.form['fecha_inicio']
         fecha_fin = request.form['fecha_fin']
         # Buscar conceptos en ese rango de fechas
+        # Convertir fechas de YYYY-MM-DD a dd/mm/yyyy para la comparación
+        fecha_inicio_formatted = datetime.strptime(fecha_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
+        fecha_fin_formatted = datetime.strptime(fecha_fin, '%Y-%m-%d').strftime('%d/%m/%Y')
+        
         conceptos = db.session.query(MovimientoConcepto, Movimiento, Cuenta)\
             .join(Movimiento)\
             .join(Cuenta, MovimientoConcepto.cuenta_id == Cuenta.id)\
             .filter(
-                Movimiento.fecha_factura >= fecha_inicio,
-                Movimiento.fecha_factura <= fecha_fin
+                Movimiento.fecha_factura >= fecha_inicio_formatted,
+                Movimiento.fecha_factura <= fecha_fin_formatted
             ).all()
+        
+        # Debug: imprimir información sobre los conceptos encontrados
+        print(f"Conceptos encontrados en rango {fecha_inicio} a {fecha_fin}: {len(conceptos)}")
+        for c in conceptos:
+            print(f"Cuenta: {c.Cuenta.cuenta} - {c.Cuenta.nombre}, Importe: {c.MovimientoConcepto.importe}, Fecha: {c.Movimiento.fecha_factura}")
+        
+        # Buscar específicamente las nóminas
+        nominas = db.session.query(MovimientoConcepto, Movimiento, Cuenta)\
+            .join(Movimiento)\
+            .join(Cuenta, MovimientoConcepto.cuenta_id == Cuenta.id)\
+            .filter(
+                Movimiento.fecha_factura >= fecha_inicio_formatted,
+                Movimiento.fecha_factura <= fecha_fin_formatted,
+                Movimiento.num_factura.like('Nómina%')
+            ).all()
+        
+        print(f"Nóminas encontradas: {len(nominas)}")
+        for n in nominas:
+            print(f"Nómina: {n.Movimiento.num_factura}, Cuenta: {n.Cuenta.cuenta} - {n.Cuenta.nombre}, Importe: {n.MovimientoConcepto.importe}")
+        
         # Agrupar y sumar importes por cuenta, incluyendo detalles de transacciones
-        prefijos = ('623','626','621','622','625','628','629','310','640','649','662','7')
+        prefijos = ('623','626','621','622','625','628','629','310','640','641','642','649','662','7')
         detalle_dict = {}
         for c in conceptos:
             cuenta = str(c.Cuenta.cuenta)
@@ -476,12 +502,17 @@ def retencion_alquileres():
     if request.method == 'POST':
         fecha_inicio = request.form['fecha_inicio']
         fecha_fin = request.form['fecha_fin']
+    
+    # Convertir fechas de YYYY-MM-DD a dd/mm/yyyy para la comparación
+    fecha_inicio_formatted = datetime.strptime(fecha_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
+    fecha_fin_formatted = datetime.strptime(fecha_fin, '%Y-%m-%d').strftime('%d/%m/%Y')
+    
     conceptos = db.session.query(MovimientoConcepto, Movimiento, Cuenta)\
         .join(Movimiento)\
         .join(Cuenta, MovimientoConcepto.cuenta_id == Cuenta.id)\
         .filter(
-            Movimiento.fecha_factura >= fecha_inicio,
-            Movimiento.fecha_factura <= fecha_fin,
+            Movimiento.fecha_factura >= fecha_inicio_formatted,
+            Movimiento.fecha_factura <= fecha_fin_formatted,
             Cuenta.cuenta == '47510000003'
         ).all()
     resultado = sum(c.MovimientoConcepto.importe for c in conceptos)
@@ -524,12 +555,17 @@ def retencion_empleados():
     if request.method == 'POST':
         fecha_inicio = request.form['fecha_inicio']
         fecha_fin = request.form['fecha_fin']
+    
+    # Convertir fechas de YYYY-MM-DD a dd/mm/yyyy para la comparación
+    fecha_inicio_formatted = datetime.strptime(fecha_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
+    fecha_fin_formatted = datetime.strptime(fecha_fin, '%Y-%m-%d').strftime('%d/%m/%Y')
+    
     conceptos = db.session.query(MovimientoConcepto, Movimiento, Cuenta)\
         .join(Movimiento)\
         .join(Cuenta, MovimientoConcepto.cuenta_id == Cuenta.id)\
         .filter(
-            Movimiento.fecha_factura >= fecha_inicio,
-            Movimiento.fecha_factura <= fecha_fin,
+            Movimiento.fecha_factura >= fecha_inicio_formatted,
+            Movimiento.fecha_factura <= fecha_fin_formatted,
             Cuenta.cuenta == '47510000001'
         ).all()
     resultado = sum(c.MovimientoConcepto.importe for c in conceptos)
@@ -575,13 +611,18 @@ def informe_347():
     if request.method == 'POST':
         fecha_inicio = request.form['fecha_inicio']
         fecha_fin = request.form['fecha_fin']
+    
+    # Convertir fechas de YYYY-MM-DD a dd/mm/yyyy para la comparación
+    fecha_inicio_formatted = datetime.strptime(fecha_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
+    fecha_fin_formatted = datetime.strptime(fecha_fin, '%Y-%m-%d').strftime('%d/%m/%Y')
+    
     # Agrupar por contrapartida y sumar importes
     conceptos = db.session.query(MovimientoConcepto, Movimiento, Cuenta)\
         .join(Movimiento)\
         .join(Cuenta, MovimientoConcepto.contrapartida_id == Cuenta.id)\
         .filter(
-            Movimiento.fecha_factura >= fecha_inicio,
-            Movimiento.fecha_factura <= fecha_fin
+            Movimiento.fecha_factura >= fecha_inicio_formatted,
+            Movimiento.fecha_factura <= fecha_fin_formatted
         ).all()
     resumen_dict = {}
     for c in conceptos:
@@ -1203,6 +1244,21 @@ def datetimeformat(value, format='%d/%m/%Y'):
     except Exception:
         return value
 
+@app.template_filter('dateinput')
+def dateinput(value):
+    """Convierte fecha de dd/mm/yyyy a yyyy-mm-dd para input type='date'"""
+    try:
+        from datetime import datetime
+        if value:
+            # Si ya está en formato yyyy-mm-dd, devolverlo tal como está
+            if '-' in value and len(value.split('-')[0]) == 4:
+                return value
+            # Si está en formato dd/mm/yyyy, convertirlo
+            return datetime.strptime(value, '%d/%m/%Y').strftime('%Y-%m-%d')
+    except Exception:
+        pass
+    return value
+
 @app.route('/configurar_general_nominas', methods=['GET', 'POST'])
 @login_required
 def configurar_general_nominas():
@@ -1253,11 +1309,34 @@ def generar_todas_nominas():
         'dietas': Cuenta.query.filter_by(cuenta='649000000002').first()
     }
     
+    # Crear cuentas faltantes automáticamente
+    cuentas_por_crear = {
+        'sueldos': ('640000000001', 'SUELDOS Y SALARIOS'),
+        'dietas': ('649000000002', 'DIETAS TRABAJADORES')
+    }
+    
+    for nombre, (numero, nombre_cuenta) in cuentas_por_crear.items():
+        if not cuentas[nombre]:
+            nueva_cuenta = Cuenta(
+                cuenta=numero,
+                nombre=nombre_cuenta,
+                tipo='normal'
+            )
+            db.session.add(nueva_cuenta)
+            db.session.flush()
+            cuentas[nombre] = nueva_cuenta
+            print(f"Cuenta creada: {numero} - {nombre_cuenta}")
+    
+    # Commit para guardar las cuentas creadas
+    db.session.commit()
+    
     # Verificar que todas las cuentas existen
     cuentas_faltantes = [k for k, v in cuentas.items() if not v]
     if cuentas_faltantes:
         flash(f'Faltan las siguientes cuentas: {", ".join(cuentas_faltantes)}', 'error')
         return redirect(url_for('configurar_general_nominas'))
+    
+
     
     movimientos_creados = 0
     
@@ -1270,7 +1349,7 @@ def generar_todas_nominas():
         
         # Valores por defecto
         valores_default = {
-            'sueldo_base': 1200.00,
+            'liquido_percibir': 1200.00,
             'retencion_irpf': 50.00,
             'ss_trabajador': 80.00,
             'ss_empresa': 500.00,
@@ -1283,7 +1362,7 @@ def generar_todas_nominas():
             
             for concepto in conceptos:
                 if concepto.cuenta.cuenta == '640000000001':  # Sueldos
-                    valores_default['sueldo_base'] = concepto.importe
+                    valores_default['liquido_percibir'] = concepto.importe
                 elif concepto.cuenta.cuenta == '47510000001':  # Retención
                     valores_default['retencion_irpf'] = concepto.importe
                 elif concepto.cuenta.cuenta == '642000000002':  # SS Trabajador
@@ -1297,19 +1376,25 @@ def generar_todas_nominas():
         config_key = f'nomina_config_{empleado.id}'
         empleado_config = session.get(config_key, valores_default)
         
+        # Calcular base imponible y total
+        base_imponible = empleado_config['liquido_percibir'] + empleado_config['ss_trabajador'] + empleado_config['retencion_irpf']
+        total = empleado_config['liquido_percibir'] + empleado_config['ss_empresa'] + empleado_config['dietas']
+        
         # Crear movimiento principal
         movimiento = Movimiento(
             tipo='Gasto',
-            fecha_trabajo=datetime.strptime(general_config['fecha_trabajo'], '%d/%m/%Y'),
-            fecha_factura=datetime.strptime(general_config['fecha_factura'], '%d/%m/%Y'),
-            num_factura=f"{general_config['num_factura']} - {empleado.nombre}"
+            fecha_trabajo=general_config['fecha_trabajo'],
+            fecha_factura=general_config['fecha_factura'],
+            num_factura=general_config['num_factura'],
+            base_imponible=base_imponible,
+            total=total
         )
         db.session.add(movimiento)
         db.session.flush()  # Para obtener el ID del movimiento
         
         # Crear conceptos del movimiento
         conceptos = [
-            (cuentas['sueldos'], empleado_config['sueldo_base']),
+            (cuentas['sueldos'], empleado_config['liquido_percibir']),
             (cuentas['retencion'], empleado_config['retencion_irpf']),
             (cuentas['ss_trabajador'], empleado_config['ss_trabajador']),
             (cuentas['ss_empresa'], empleado_config['ss_empresa']),
@@ -1369,7 +1454,7 @@ def ver_todas_nominas():
         
         # Valores por defecto
         valores_default = {
-            'sueldo_base': 1200.00,
+            'liquido_percibir': 1200.00,
             'retencion_irpf': 50.00,
             'ss_trabajador': 80.00,
             'ss_empresa': 500.00,
@@ -1382,7 +1467,7 @@ def ver_todas_nominas():
             
             for concepto in conceptos:
                 if concepto.cuenta.cuenta == '640000000001':  # Sueldos
-                    valores_default['sueldo_base'] = concepto.importe
+                    valores_default['liquido_percibir'] = concepto.importe
                 elif concepto.cuenta.cuenta == '47510000001':  # Retención
                     valores_default['retencion_irpf'] = concepto.importe
                 elif concepto.cuenta.cuenta == '642000000002':  # SS Trabajador
@@ -1397,7 +1482,7 @@ def ver_todas_nominas():
         empleado_config = session.get(config_key, valores_default)
         
         # Calcular total
-        total = empleado_config['sueldo_base'] + empleado_config['ss_empresa'] + empleado_config['dietas'] - empleado_config['retencion_irpf'] - empleado_config['ss_trabajador']
+        total = empleado_config['liquido_percibir'] + empleado_config['ss_empresa'] + empleado_config['dietas'] + empleado_config['retencion_irpf'] + empleado_config['ss_trabajador']
         
         empleados_config.append({
             'empleado': empleado,
@@ -1416,7 +1501,7 @@ def guardar_config_empleado(empleado_id):
     # Guardar configuración específica del empleado
     config_key = f'nomina_config_{empleado_id}'
     session[config_key] = {
-        'sueldo_base': float(request.form['sueldo_base']),
+        'liquido_percibir': float(request.form['liquido_percibir']),
         'retencion_irpf': float(request.form['retencion_irpf']),
         'ss_trabajador': float(request.form['ss_trabajador']),
         'ss_empresa': float(request.form['ss_empresa']),

@@ -204,6 +204,50 @@
             font-size: 0.9em;
         }
         
+        .tools-section {
+            margin-bottom: 40px;
+        }
+        
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        
+        .tool-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: inherit;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .tool-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+        }
+        
+        .tool-card h3 {
+            font-size: 1.1em;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .tool-card p {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .tool-icon {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
         .dropdown {
             position: relative;
             display: inline-block;
@@ -418,41 +462,6 @@
                 <div class="tools-section">
                     <h2>🛠️ Herramientas</h2>
                     <div class="tools-grid">
-                        <a href="{{ url_for('listar_movimientos') }}" class="tool-card">
-                            <div class="tool-icon">📊</div>
-                            <h3>Movimientos</h3>
-                            <p>Gestionar movimientos contables</p>
-                        </a>
-                        <a href="{{ url_for('listar_cuentas') }}" class="tool-card">
-                            <div class="tool-icon">📋</div>
-                            <h3>Cuentas</h3>
-                            <p>Administrar plan de cuentas</p>
-                        </a>
-                        <a href="{{ url_for('resultado_explotacion') }}" class="tool-card">
-                            <div class="tool-icon">📈</div>
-                            <h3>Resultado Explotación</h3>
-                            <p>Ver resultado de explotación</p>
-                        </a>
-                        <a href="{{ url_for('informe_347') }}" class="tool-card">
-                            <div class="tool-icon">📋</div>
-                            <h3>Informe 347</h3>
-                            <p>Generar informe 347</p>
-                        </a>
-                        <a href="{{ url_for('retencion_alquileres') }}" class="tool-card">
-                            <div class="tool-icon">🏠</div>
-                            <h3>Retención Alquileres</h3>
-                            <p>Gestionar retenciones de alquileres</p>
-                        </a>
-                        <a href="{{ url_for('retencion_empleados') }}" class="tool-card">
-                            <div class="tool-icon">👥</div>
-                            <h3>Retención Empleados</h3>
-                            <p>Gestionar retenciones de empleados</p>
-                        </a>
-                        <a href="{{ url_for('ver_todas_nominas') }}" class="tool-card">
-                            <div class="tool-icon">💰</div>
-                            <h3>Gestionar Nóminas</h3>
-                            <p>Configurar y generar nóminas para empleados</p>
-                        </a>
                         <a href="{{ url_for('configurar_general_nominas') }}" class="tool-card">
                             <div class="tool-icon">⚙️</div>
                             <h3>Configurar Nóminas</h3>

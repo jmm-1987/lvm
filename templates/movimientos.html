@@ -190,7 +190,7 @@
                 <!-- <td>{{ mov.fecha_trabajo }}</td> -->
                 <td>{{ mov.fecha_factura|datetimeformat }}</td>
                 <td>{{ mov.num_factura }}</td>
-                <td class="valor">{{ '%.2f'|format(mov.base_imponible|default(0))|replace(',', '.')|replace('.', ',') }}</td>
+                <td class="valor">{{ '%.2f'|format(0)|replace(',', '.')|replace('.', ',') }}</td>
                 <td class="valor"><strong>{{ '%.2f'|format(mov.total|default(0))|replace(',', '.')|replace('.', ',') }}</strong></td>
                 <td>
                     {% if contrapartida_por_mov[mov.id] %}

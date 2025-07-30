@@ -537,7 +537,7 @@
                             <thead>
                                 <tr>
                                     <th>👤 Empleado</th>
-                                    <th>💵 Sueldo Base</th>
+                                    <th>💵 Líquido a Percibir</th>
                                     <th>🏛️ Retención IRPF</th>
                                     <th>👤 SS Trabajador</th>
                                     <th>🏢 SS Empresa</th>
@@ -563,14 +563,14 @@
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="amount-cell positive">{{ "%.2f"|format(item.config.sueldo_base) }} €</td>
+                                    <td class="amount-cell positive">{{ "%.2f"|format(item.config.liquido_percibir) }} €</td>
                                     <td class="amount-cell negative">-{{ "%.2f"|format(item.config.retencion_irpf) }} €</td>
                                     <td class="amount-cell negative">-{{ "%.2f"|format(item.config.ss_trabajador) }} €</td>
                                     <td class="amount-cell positive">{{ "%.2f"|format(item.config.ss_empresa) }} €</td>
                                     <td class="amount-cell positive">{{ "%.2f"|format(item.config.dietas) }} €</td>
                                     <td class="total-cell">{{ "%.2f"|format(item.total) }} €</td>
                                     <td class="actions-cell">
-                                        <button onclick="abrirModalEditar({{ item.empleado.id }}, '{{ item.empleado.nombre }}', {{ item.config.sueldo_base }}, {{ item.config.retencion_irpf }}, {{ item.config.ss_trabajador }}, {{ item.config.ss_empresa }}, {{ item.config.dietas }})" class="btn btn-primary">
+                                        <button onclick="abrirModalEditar({{ item.empleado.id }}, '{{ item.empleado.nombre }}', {{ item.config.liquido_percibir }}, {{ item.config.retencion_irpf }}, {{ item.config.ss_trabajador }}, {{ item.config.ss_empresa }}, {{ item.config.dietas }})" class="btn btn-primary">
                                             ⚙️
                                         </button>
                                     </td>
@@ -617,8 +617,8 @@
                 <div class="modal-body">
                     <div class="modal-form-row">
                         <div class="modal-form-group">
-                            <label for="modalSueldoBase">💵 Sueldo base:</label>
-                            <input type="number" id="modalSueldoBase" name="sueldo_base" step="0.01" required>
+                            <label for="modalSueldoBase">💵 Líquido a percibir:</label>
+                            <input type="number" id="modalSueldoBase" name="liquido_percibir" step="0.01" required>
                         </div>
                         <div class="modal-form-group">
                             <label for="modalRetencionIrpf">🏛️ Retención IRPF:</label>

@@ -1,8 +1,8 @@
-Flask==2.3.3
-Flask-SQLAlchemy==3.0.5
+Flask==3.0.0
+Flask-SQLAlchemy==3.1.1
 Flask-Login==0.6.3
-paramiko==3.3.1
+paramiko==3.4.0
 APScheduler==3.10.4
 PyPDF2==3.0.1
 openpyxl==3.1.2
-pandas==2.0.3
+gunicorn==21.2.0
