@@ -24,6 +24,9 @@
             position: relative;
             cursor: pointer;
         }
+        .tooltip.active {
+            background-color: #e3f2fd;
+        }
         .tooltiptext {
             visibility: hidden;
             width: 400px;
@@ -43,6 +46,26 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.3);
             pointer-events: none;
         }
+        .tooltiptext.fixed {
+            pointer-events: auto;
+            max-height: 60vh;
+            overflow-y: auto;
+            border: 2px solid #ffd700;
+        }
+        .tooltiptext.fixed::-webkit-scrollbar {
+            width: 8px;
+        }
+        .tooltiptext.fixed::-webkit-scrollbar-track {
+            background: #555;
+            border-radius: 4px;
+        }
+        .tooltiptext.fixed::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        .tooltiptext.fixed::-webkit-scrollbar-thumb:hover {
+            background: #aaa;
+        }
         .tooltiptext::after {
             content: "";
             position: absolute;
@@ -52,6 +75,11 @@
             border-width: 5px;
             border-style: solid;
             border-color: #333 transparent transparent transparent;
+        }
+        .tooltiptext.tooltip-below::after {
+            top: auto;
+            bottom: 100%;
+            border-color: transparent transparent #333 transparent;
         }
         .tooltip:hover .tooltiptext {
             visibility: visible;
@@ -152,6 +180,9 @@
                 </tr>
                 {% endfor %}
             </table>
+            <div class="diferencia" style="font-size:1.2em; color:#388e3c; margin-top:15px;">
+                Total cuentas 7: <span>{{ '%.2f'|format(resultado) }} €</span>
+            </div>
             <div class="resumen">
                 <span>Detalle otras cuentas:</span>
             </div>
@@ -185,41 +216,78 @@
             let currentTooltip = null;
             
             tooltips.forEach(tooltip => {
+                let isFixed = false;
+                
                 tooltip.addEventListener('mouseenter', function(e) {
-                    const transacciones = JSON.parse(this.dataset.transacciones);
-                    showTooltip(e, transacciones);
+                    if (!isFixed) {
+                        const transacciones = JSON.parse(this.dataset.transacciones);
+                        showTooltip(e, transacciones);
+                    }
                 });
                 
                 tooltip.addEventListener('mousemove', function(e) {
-                    if (currentTooltip) {
+                    if (currentTooltip && !isFixed) {
                         updateTooltipPosition(e);
                     }
                 });
                 
                 tooltip.addEventListener('mouseleave', function() {
-                    hideTooltip();
+                    if (!isFixed) {
+                        hideTooltip();
+                    }
+                });
+                
+                tooltip.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    if (isFixed) {
+                        // Si ya está fijo, lo ocultamos
+                        hideTooltip();
+                        isFixed = false;
+                        this.classList.remove('active');
+                    } else {
+                        // Si no está fijo, lo fijamos
+                        const transacciones = JSON.parse(this.dataset.transacciones);
+                        showTooltip(e, transacciones, true);
+                        isFixed = true;
+                        this.classList.add('active');
+                    }
                 });
             });
             
-            function showTooltip(e, transacciones) {
+            function showTooltip(e, transacciones, fixed = false) {
                 hideTooltip();
                 
                 currentTooltip = document.createElement('div');
                 currentTooltip.className = 'tooltiptext';
+                if (fixed) {
+                    currentTooltip.classList.add('fixed');
+                }
                 currentTooltip.style.visibility = 'visible';
                 currentTooltip.style.opacity = '1';
                 
-                let html = '<strong>Detalles de transacciones:</strong><br><br>';
-                transacciones.forEach(t => {
-                    html += '<div class="transaccion-item">';
-                    html += '<div class="transaccion-fecha">📅 ' + formatDate(t.fecha) + '</div>';
-                    html += '<div class="transaccion-contrapartida">🏢 ' + t.contrapartida + '</div>';
-                    html += '<div class="transaccion-importe">💰 ' + parseFloat(t.importe).toFixed(2) + ' €</div>';
-                    if (t.concepto && t.concepto !== "Sin concepto") {
-                        html += '<div class="transaccion-concepto">📝 ' + t.concepto + '</div>';
-                    }
-                    html += '</div>';
-                });
+                let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">';
+                html += '<strong>Detalles de transacciones:</strong>';
+                if (fixed) {
+                    html += '<button onclick="hideTooltip()" style="background: #ff4444; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 10px; cursor: pointer;">✕ Cerrar</button>';
+                }
+                html += '</div><br>';
+                
+                if (transacciones && transacciones.length > 0) {
+                    transacciones.forEach(t => {
+                        html += '<div class="transaccion-item">';
+                        html += '<div class="transaccion-fecha">📅 ' + formatDate(t.fecha) + '</div>';
+                        html += '<div class="transaccion-contrapartida">🏢 ' + t.contrapartida + '</div>';
+                        html += '<div class="transaccion-importe">💰 ' + parseFloat(t.importe).toFixed(2) + ' €</div>';
+                        if (t.concepto && t.concepto !== "Sin concepto") {
+                            html += '<div class="transaccion-concepto">📝 ' + t.concepto + '</div>';
+                        }
+                        html += '</div>';
+                    });
+                } else {
+                    html += '<div class="transaccion-item">No hay transacciones disponibles</div>';
+                }
                 
                 currentTooltip.innerHTML = html;
                 document.body.appendChild(currentTooltip);
@@ -244,9 +312,9 @@
                 // Ajustar si se sale por arriba
                 if (y < 0) {
                     y = e.clientY + 10;
-                    currentTooltip.style.transform = 'none';
-                    currentTooltip.querySelector('::after').style.top = '-10px';
-                    currentTooltip.querySelector('::after').style.bottom = 'auto';
+                    currentTooltip.classList.add('tooltip-below');
+                } else {
+                    currentTooltip.classList.remove('tooltip-below');
                 }
                 
                 currentTooltip.style.left = x + 'px';
@@ -258,11 +326,39 @@
                     currentTooltip.remove();
                     currentTooltip = null;
                 }
+                // Remover la clase active de todas las filas
+                document.querySelectorAll('.tooltip.active').forEach(tooltip => {
+                    tooltip.classList.remove('active');
+                });
             }
             
+            // Cerrar tooltip fijo al hacer clic fuera
+            document.addEventListener('click', function(e) {
+                if (currentTooltip && currentTooltip.classList.contains('fixed')) {
+                    if (!currentTooltip.contains(e.target) && !e.target.closest('.tooltip')) {
+                        hideTooltip();
+                    }
+                }
+            });
+            
             function formatDate(dateStr) {
-                const date = new Date(dateStr);
-                return date.toLocaleDateString('es-ES');
+                try {
+                    // Si la fecha está en formato dd/mm/yyyy, convertirla
+                    if (dateStr.includes('/')) {
+                        const parts = dateStr.split('/');
+                        if (parts.length === 3) {
+                            return dateStr; // Ya está en formato correcto
+                        }
+                    }
+                    
+                    const date = new Date(dateStr);
+                    if (isNaN(date.getTime())) {
+                        return dateStr; // Devolver el string original si no se puede parsear
+                    }
+                    return date.toLocaleDateString('es-ES');
+                } catch (e) {
+                    return dateStr; // Devolver el string original si hay error
+                }
             }
         });
     </script>

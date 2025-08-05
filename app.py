@@ -343,17 +343,22 @@ def resultado_explotacion():
         fecha_inicio = request.form['fecha_inicio']
         fecha_fin = request.form['fecha_fin']
         # Buscar conceptos en ese rango de fechas
-        # Convertir fechas de YYYY-MM-DD a dd/mm/yyyy para la comparación
-        fecha_inicio_formatted = datetime.strptime(fecha_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
-        fecha_fin_formatted = datetime.strptime(fecha_fin, '%Y-%m-%d').strftime('%d/%m/%Y')
+        # Convertir fechas de YYYY-MM-DD a objetos datetime para la comparación
+        fecha_inicio_dt, fecha_fin_dt = convertir_fechas_para_filtro(fecha_inicio, fecha_fin)
         
         conceptos = db.session.query(MovimientoConcepto, Movimiento, Cuenta)\
             .join(Movimiento)\
             .join(Cuenta, MovimientoConcepto.cuenta_id == Cuenta.id)\
-            .filter(
-                Movimiento.fecha_factura >= fecha_inicio_formatted,
-                Movimiento.fecha_factura <= fecha_fin_formatted
-            ).all()
+            .all()
+        
+        # Filtrar por fecha usando comparación de datetime
+        conceptos_filtrados = []
+        for c in conceptos:
+            fecha_movimiento = parsear_fecha_robusto(c.Movimiento.fecha_factura)
+            if fecha_movimiento and fecha_inicio_dt <= fecha_movimiento <= fecha_fin_dt:
+                conceptos_filtrados.append(c)
+        
+        conceptos = conceptos_filtrados
         
         # Debug: imprimir información sobre los conceptos encontrados
         print(f"Conceptos encontrados en rango {fecha_inicio} a {fecha_fin}: {len(conceptos)}")
@@ -365,10 +370,17 @@ def resultado_explotacion():
             .join(Movimiento)\
             .join(Cuenta, MovimientoConcepto.cuenta_id == Cuenta.id)\
             .filter(
-                Movimiento.fecha_factura >= fecha_inicio_formatted,
-                Movimiento.fecha_factura <= fecha_fin_formatted,
                 Movimiento.num_factura.like('Nómina%')
             ).all()
+        
+        # Filtrar nóminas por fecha usando comparación de datetime
+        nominas_filtradas = []
+        for n in nominas:
+            fecha_movimiento = parsear_fecha_robusto(n.Movimiento.fecha_factura)
+            if fecha_movimiento and fecha_inicio_dt <= fecha_movimiento <= fecha_fin_dt:
+                nominas_filtradas.append(n)
+        
+        nominas = nominas_filtradas
         
         print(f"Nóminas encontradas: {len(nominas)}")
         for n in nominas:
@@ -379,7 +391,14 @@ def resultado_explotacion():
         detalle_dict = {}
         for c in conceptos:
             cuenta = str(c.Cuenta.cuenta)
-            if cuenta.startswith(prefijos):
+            # Verificar si la cuenta empieza con alguno de los prefijos
+            incluir_cuenta = False
+            for prefijo in prefijos:
+                if cuenta.startswith(prefijo):
+                    incluir_cuenta = True
+                    break
+            
+            if incluir_cuenta:
                 key = cuenta
                 if key not in detalle_dict:
                     detalle_dict[key] = {
@@ -441,14 +460,24 @@ def resultado_iva():
         fecha_inicio = request.form['fecha_inicio']
         fecha_fin = request.form['fecha_fin']
         desglose_checked = 'desglose' in request.form
+        # Convertir fechas de YYYY-MM-DD a objetos datetime para la comparación
+        fecha_inicio_dt, fecha_fin_dt = convertir_fechas_para_filtro(fecha_inicio, fecha_fin)
+        
         conceptos = db.session.query(MovimientoConcepto, Movimiento, Cuenta)\
             .join(Movimiento)\
             .join(Cuenta, MovimientoConcepto.cuenta_id == Cuenta.id)\
             .filter(
-                Movimiento.fecha_factura >= fecha_inicio,
-                Movimiento.fecha_factura <= fecha_fin,
                 Cuenta.cuenta.in_(['47700000001', '47200000001'])
             ).all()
+        
+        # Filtrar por fecha usando comparación de datetime
+        conceptos_filtrados = []
+        for c in conceptos:
+            fecha_movimiento = parsear_fecha_robusto(c.Movimiento.fecha_factura)
+            if fecha_movimiento and fecha_inicio_dt <= fecha_movimiento <= fecha_fin_dt:
+                conceptos_filtrados.append(c)
+        
+        conceptos = conceptos_filtrados
         for c in conceptos:
             if str(c.Cuenta.cuenta).strip() == '47700000001':
                 iva_repercutido += c.MovimientoConcepto.importe
@@ -503,18 +532,24 @@ def retencion_alquileres():
         fecha_inicio = request.form['fecha_inicio']
         fecha_fin = request.form['fecha_fin']
     
-    # Convertir fechas de YYYY-MM-DD a dd/mm/yyyy para la comparación
-    fecha_inicio_formatted = datetime.strptime(fecha_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
-    fecha_fin_formatted = datetime.strptime(fecha_fin, '%Y-%m-%d').strftime('%d/%m/%Y')
+    # Convertir fechas de YYYY-MM-DD a objetos datetime para la comparación
+    fecha_inicio_dt, fecha_fin_dt = convertir_fechas_para_filtro(fecha_inicio, fecha_fin)
     
     conceptos = db.session.query(MovimientoConcepto, Movimiento, Cuenta)\
         .join(Movimiento)\
         .join(Cuenta, MovimientoConcepto.cuenta_id == Cuenta.id)\
         .filter(
-            Movimiento.fecha_factura >= fecha_inicio_formatted,
-            Movimiento.fecha_factura <= fecha_fin_formatted,
             Cuenta.cuenta == '47510000003'
         ).all()
+    
+    # Filtrar por fecha usando comparación de datetime
+    conceptos_filtrados = []
+    for c in conceptos:
+        fecha_movimiento = parsear_fecha_robusto(c.Movimiento.fecha_factura)
+        if fecha_movimiento and fecha_inicio_dt <= fecha_movimiento <= fecha_fin_dt:
+            conceptos_filtrados.append(c)
+    
+    conceptos = conceptos_filtrados
     resultado = sum(c.MovimientoConcepto.importe for c in conceptos)
     # Desglose por contrapartida
     desglose_dict = {}
@@ -556,18 +591,24 @@ def retencion_empleados():
         fecha_inicio = request.form['fecha_inicio']
         fecha_fin = request.form['fecha_fin']
     
-    # Convertir fechas de YYYY-MM-DD a dd/mm/yyyy para la comparación
-    fecha_inicio_formatted = datetime.strptime(fecha_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
-    fecha_fin_formatted = datetime.strptime(fecha_fin, '%Y-%m-%d').strftime('%d/%m/%Y')
+    # Convertir fechas de YYYY-MM-DD a objetos datetime para la comparación
+    fecha_inicio_dt, fecha_fin_dt = convertir_fechas_para_filtro(fecha_inicio, fecha_fin)
     
     conceptos = db.session.query(MovimientoConcepto, Movimiento, Cuenta)\
         .join(Movimiento)\
         .join(Cuenta, MovimientoConcepto.cuenta_id == Cuenta.id)\
         .filter(
-            Movimiento.fecha_factura >= fecha_inicio_formatted,
-            Movimiento.fecha_factura <= fecha_fin_formatted,
             Cuenta.cuenta == '47510000001'
         ).all()
+    
+    # Filtrar por fecha usando comparación de datetime
+    conceptos_filtrados = []
+    for c in conceptos:
+        fecha_movimiento = parsear_fecha_robusto(c.Movimiento.fecha_factura)
+        if fecha_movimiento and fecha_inicio_dt <= fecha_movimiento <= fecha_fin_dt:
+            conceptos_filtrados.append(c)
+    
+    conceptos = conceptos_filtrados
     resultado = sum(c.MovimientoConcepto.importe for c in conceptos)
     # Desglose por contrapartida
     desglose_dict = {}
@@ -612,18 +653,23 @@ def informe_347():
         fecha_inicio = request.form['fecha_inicio']
         fecha_fin = request.form['fecha_fin']
     
-    # Convertir fechas de YYYY-MM-DD a dd/mm/yyyy para la comparación
-    fecha_inicio_formatted = datetime.strptime(fecha_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
-    fecha_fin_formatted = datetime.strptime(fecha_fin, '%Y-%m-%d').strftime('%d/%m/%Y')
+    # Convertir fechas de YYYY-MM-DD a objetos datetime para la comparación
+    fecha_inicio_dt, fecha_fin_dt = convertir_fechas_para_filtro(fecha_inicio, fecha_fin)
     
     # Agrupar por contrapartida y sumar importes
     conceptos = db.session.query(MovimientoConcepto, Movimiento, Cuenta)\
         .join(Movimiento)\
         .join(Cuenta, MovimientoConcepto.contrapartida_id == Cuenta.id)\
-        .filter(
-            Movimiento.fecha_factura >= fecha_inicio_formatted,
-            Movimiento.fecha_factura <= fecha_fin_formatted
-        ).all()
+        .all()
+    
+    # Filtrar por fecha usando comparación de datetime
+    conceptos_filtrados = []
+    for c in conceptos:
+        fecha_movimiento = parsear_fecha_robusto(c.Movimiento.fecha_factura)
+        if fecha_movimiento and fecha_inicio_dt <= fecha_movimiento <= fecha_fin_dt:
+            conceptos_filtrados.append(c)
+    
+    conceptos = conceptos_filtrados
     resumen_dict = {}
     for c in conceptos:
         contrapartida = c.Cuenta
@@ -1258,6 +1304,46 @@ def dateinput(value):
     except Exception:
         pass
     return value
+
+def convertir_fechas_para_filtro(fecha_inicio, fecha_fin):
+    """
+    Convierte fechas de YYYY-MM-DD a objetos datetime para usar en filtros de base de datos
+    """
+    fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+    fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
+    return fecha_inicio_dt, fecha_fin_dt
+
+def parsear_fecha_robusto(fecha_str):
+    """
+    Intenta parsear una fecha en diferentes formatos comunes
+    """
+    if not fecha_str:
+        return None
+    
+    # Lista de formatos a intentar
+    formatos = [
+        '%d/%m/%Y',    # 01/01/2024
+        '%d/%m/%y',    # 01/01/24
+        '%d-%m-%Y',    # 01-01-2024
+        '%d-%m-%y',    # 01-01-24
+        '%Y-%m-%d',    # 2024-01-01
+        '%Y/%m/%d',    # 2024/01/01
+        '%d/%m/%Y',    # 1/1/2024 (con ceros a la izquierda)
+        '%d/%m/%y',    # 1/1/24 (con ceros a la izquierda)
+    ]
+    
+    for formato in formatos:
+        try:
+            return datetime.strptime(fecha_str, formato)
+        except ValueError:
+            continue
+    
+    # Si ninguno funciona, intentar limpiar la fecha
+    fecha_limpia = fecha_str.strip()
+    if fecha_limpia != fecha_str:
+        return parsear_fecha_robusto(fecha_limpia)
+    
+    return None
 
 @app.route('/configurar_general_nominas', methods=['GET', 'POST'])
 @login_required
