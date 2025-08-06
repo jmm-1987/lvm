@@ -18,8 +18,10 @@
         .negativo { color: #b71c1c; font-weight: bold; }
         .detalle-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
         .detalle-table th, .detalle-table td { padding: 8px 10px; border-bottom: 1px solid #e0e0e0; text-align: left; }
+        .detalle-table td:nth-child(3) { text-align: right; padding-right: 15px; }
+        .detalle-table th:nth-child(3) { text-align: right; padding-right: 15px; }
         .detalle-table th { background: #e3eaf2; }
-        .diferencia { font-size: 1.3em; font-weight: bold; text-align: right; margin-top: 18px; }
+        .diferencia { font-size: 1.3em; font-weight: bold; margin-top: 18px; }
         .tooltip {
             position: relative;
             cursor: pointer;
@@ -118,7 +120,7 @@
             .container {
                 box-shadow: none !important;
                 margin: 0 !important;
-                padding: 0 10mm !important;
+                padding: 0 5mm !important;
                 max-width: 100vw !important;
                 width: 100vw !important;
             }
@@ -127,25 +129,31 @@
             }
             h1 {
                 margin-top: 0;
+                font-size: 1.3em !important;
+                margin-bottom: 8px !important;
             }
             .detalle-table th, .detalle-table td {
-                font-size: 11pt;
-                padding: 4px 6px;
+                font-size: 9pt;
+                padding: 3px 5px;
+            }
+            .detalle-table td:nth-child(3), .detalle-table th:nth-child(3) {
+                text-align: right !important;
+                padding-right: 12px !important;
             }
             .detalle-table {
-                margin-bottom: 10px;
+                margin-bottom: 6px;
             }
             .resumen, .diferencia {
-                font-size: 1em !important;
-                margin: 8px 0 !important;
-                padding: 6px 0 !important;
+                font-size: 0.9em !important;
+                margin: 4px 0 !important;
+                padding: 3px 0 !important;
             }
             .diferencia {
-                font-size: 1.1em !important;
+                font-size: 1em !important;
             }
             @page {
                 size: A4 portrait;
-                margin: 10mm;
+                margin: 15mm;
             }
         }
     </style>
@@ -180,7 +188,7 @@
                 </tr>
                 {% endfor %}
             </table>
-            <div class="diferencia" style="font-size:1.2em; color:#388e3c; margin-top:15px;">
+            <div class="diferencia" style="font-size:1em; color:#388e3c; margin-top:10px; text-align:left;">
                 Total cuentas 7: <span>{{ '%.2f'|format(resultado) }} €</span>
             </div>
             <div class="resumen">
@@ -202,10 +210,10 @@
                 </tr>
                 {% endfor %}
             </table>
-            <div class="diferencia">
+            <div class="diferencia" style="margin-top:8px; text-align:left; font-weight:bold;">
              Gastos fijos: <span>{{ '%.2f'|format(diferencia) }} €</span>
             </div>
-            <div class="diferencia" style="font-size:1.5em; color:#1976d2; margin-top:30px;">
+            <div class="diferencia" style="font-size:1.2em; color:#1976d2; margin-top:15px; text-align:left; font-weight:bold;">
                 Resultado de la explotación: <span class="{% if resultado_explotacion is not none and resultado_explotacion < 0 %}negativo{% endif %}">{{ '%.2f'|format(resultado_explotacion) }} €</span>
             </div>
         {% endif %}
