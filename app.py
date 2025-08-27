@@ -163,7 +163,14 @@ def borrar_cuenta(id):
 # Vistas para movimientos
 @app.route('/movimientos')
 def listar_movimientos():
-    movimientos = Movimiento.query.all()
+    # Ordenar por fecha de factura convertida a fecha real (de más reciente a más antigua)
+    movimientos = db.session.query(Movimiento).order_by(
+        db.func.strftime('%Y-%m-%d', 
+            db.func.substr(Movimiento.fecha_factura, 7, 4) + '-' + 
+            db.func.substr(Movimiento.fecha_factura, 4, 2) + '-' + 
+            db.func.substr(Movimiento.fecha_factura, 1, 2)
+        ).desc()
+    ).all()
     conceptos_por_mov = {}
     contrapartida_por_mov = {}
     for mov in movimientos:
@@ -1349,10 +1356,25 @@ def parsear_fecha_robusto(fecha_str):
 @login_required
 def configurar_general_nominas():
     if request.method == 'POST':
+        # Convertir fechas de dd/mm/yyyy a yyyy-mm-dd antes de guardar
+        fecha_trabajo = request.form['fecha_trabajo']
+        fecha_factura = request.form['fecha_factura']
+        
+        # Convertir formato si viene en dd/mm/yyyy
+        if '/' in fecha_trabajo and len(fecha_trabajo.split('/')) == 3:
+            partes = fecha_trabajo.split('/')
+            if len(partes[0]) == 2 and len(partes[1]) == 2 and len(partes[2]) == 4:
+                fecha_trabajo = f"{partes[2]}-{partes[1]}-{partes[0]}"
+        
+        if '/' in fecha_factura and len(fecha_factura.split('/')) == 3:
+            partes = fecha_factura.split('/')
+            if len(partes[0]) == 2 and len(partes[1]) == 2 and len(partes[2]) == 4:
+                fecha_factura = f"{partes[2]}-{partes[1]}-{partes[0]}"
+        
         # Guardar configuración general
         session['nomina_general_config'] = {
-            'fecha_trabajo': request.form['fecha_trabajo'],
-            'fecha_factura': request.form['fecha_factura'],
+            'fecha_trabajo': fecha_trabajo,
+            'fecha_factura': fecha_factura,
             'num_factura': request.form['num_factura']
         }
         flash('Configuración general de nóminas guardada correctamente.', 'success')
@@ -1360,10 +1382,21 @@ def configurar_general_nominas():
     
     # Cargar configuración existente o valores por defecto
     config = session.get('nomina_general_config', {
-        'fecha_trabajo': datetime.now().strftime('%d/%m/%Y'),
-        'fecha_factura': datetime.now().strftime('%d/%m/%Y'),
+        'fecha_trabajo': datetime.now().strftime('%Y-%m-%d'),
+        'fecha_factura': datetime.now().strftime('%Y-%m-%d'),
         'num_factura': f'Nómina {datetime.now().strftime("%B %Y")}'
     })
+    
+    # Convertir fechas a formato dd/mm/yyyy para mostrar en la interfaz
+    if '-' in config['fecha_trabajo'] and len(config['fecha_trabajo'].split('-')) == 3:
+        partes = config['fecha_trabajo'].split('-')
+        if len(partes[0]) == 4 and len(partes[1]) == 2 and len(partes[2]) == 2:
+            config['fecha_trabajo'] = f"{partes[2]}/{partes[1]}/{partes[0]}"
+    
+    if '-' in config['fecha_factura'] and len(config['fecha_factura'].split('-')) == 3:
+        partes = config['fecha_factura'].split('-')
+        if len(partes[0]) == 4 and len(partes[1]) == 2 and len(partes[2]) == 2:
+            config['fecha_factura'] = f"{partes[2]}/{partes[1]}/{partes[0]}"
     
     return render_template('configurar_general_nominas.html', config=config)
 
@@ -1427,19 +1460,20 @@ def generar_todas_nominas():
     movimientos_creados = 0
     
     for empleado in empleados:
-        # Buscar la última nómina del empleado para valores predeterminados
-        ultima_nomina = Movimiento.query.filter(
-            Movimiento.num_factura.like(f'%{empleado.nombre}%'),
-            Movimiento.tipo == 'Gasto'
+        # Buscar la última nómina del empleado buscando movimientos donde él sea la contrapartida
+        ultima_nomina = db.session.query(Movimiento).join(MovimientoConcepto).filter(
+            MovimientoConcepto.contrapartida_id == empleado.id,
+            Movimiento.tipo == 'Gasto',
+            Movimiento.num_factura.like('Nómina%')
         ).order_by(Movimiento.fecha_trabajo.desc()).first()
         
-        # Valores por defecto
+        # Valores por defecto: 0 si no hay nómina previa, valores de la última nómina si existe
         valores_default = {
-            'liquido_percibir': 1200.00,
-            'retencion_irpf': 50.00,
-            'ss_trabajador': 80.00,
-            'ss_empresa': 500.00,
-            'dietas': 600.00
+            'liquido_percibir': 0.00,
+            'retencion_irpf': 0.00,
+            'ss_trabajador': 0.00,
+            'ss_empresa': 0.00,
+            'dietas': 0.00
         }
         
         # Si existe una nómina anterior, usar esos valores
@@ -1467,11 +1501,13 @@ def generar_todas_nominas():
         total = empleado_config['liquido_percibir'] + empleado_config['ss_empresa'] + empleado_config['dietas']
         
         # Crear movimiento principal
+        # Añadir el nombre del empleado al número de factura para evitar confusión
+        num_factura_empleado = f"{general_config['num_factura']} - {empleado.nombre}"
         movimiento = Movimiento(
             tipo='Gasto',
             fecha_trabajo=general_config['fecha_trabajo'],
             fecha_factura=general_config['fecha_factura'],
-            num_factura=general_config['num_factura'],
+            num_factura=num_factura_empleado,
             base_imponible=base_imponible,
             total=total
         )
@@ -1518,10 +1554,22 @@ def generar_todas_nominas():
 def ver_todas_nominas():
     # Obtener configuración general
     general_config = session.get('nomina_general_config', {
-        'fecha_trabajo': datetime.now().strftime('%d/%m/%Y'),
-        'fecha_factura': datetime.now().strftime('%d/%m/%Y'),
+        'fecha_trabajo': datetime.now().strftime('%Y-%m-%d'),
+        'fecha_factura': datetime.now().strftime('%Y-%m-%d'),
         'num_factura': f'Nómina {datetime.now().strftime("%B %Y")}'
     })
+    
+    # Convertir fechas a formato dd/mm/yyyy para mostrar en la interfaz
+    config_display = general_config.copy()
+    if '-' in config_display['fecha_trabajo'] and len(config_display['fecha_trabajo'].split('-')) == 3:
+        partes = config_display['fecha_trabajo'].split('-')
+        if len(partes[0]) == 4 and len(partes[1]) == 2 and len(partes[2]) == 2:
+            config_display['fecha_trabajo'] = f"{partes[2]}/{partes[1]}/{partes[0]}"
+    
+    if '-' in config_display['fecha_factura'] and len(config_display['fecha_factura'].split('-')) == 3:
+        partes = config_display['fecha_factura'].split('-')
+        if len(partes[0]) == 4 and len(partes[1]) == 2 and len(partes[2]) == 2:
+            config_display['fecha_factura'] = f"{partes[2]}/{partes[1]}/{partes[0]}"
     
     # Obtener todos los empleados
     empleados = Cuenta.query.filter(
@@ -1532,36 +1580,50 @@ def ver_todas_nominas():
     # Obtener configuraciones de cada empleado
     empleados_config = []
     for empleado in empleados:
-        # Buscar la última nómina del empleado
-        ultima_nomina = Movimiento.query.filter(
-            Movimiento.num_factura.like(f'%{empleado.nombre}%'),
-            Movimiento.tipo == 'Gasto'
+        # Buscar la última nómina del empleado buscando movimientos donde él sea la contrapartida
+        ultima_nomina = db.session.query(Movimiento).join(MovimientoConcepto).filter(
+            MovimientoConcepto.contrapartida_id == empleado.id,
+            Movimiento.tipo == 'Gasto',
+            Movimiento.num_factura.like('Nómina%')
         ).order_by(Movimiento.fecha_trabajo.desc()).first()
         
-        # Valores por defecto
+        # Valores por defecto: 0 si no hay nómina previa, valores de la última nómina si existe
         valores_default = {
-            'liquido_percibir': 1200.00,
-            'retencion_irpf': 50.00,
-            'ss_trabajador': 80.00,
-            'ss_empresa': 500.00,
-            'dietas': 600.00
+            'liquido_percibir': 0.00,
+            'retencion_irpf': 0.00,
+            'ss_trabajador': 0.00,
+            'ss_empresa': 0.00,
+            'dietas': 0.00
         }
         
         # Si existe una nómina anterior, usar esos valores
         if ultima_nomina:
             conceptos = MovimientoConcepto.query.filter_by(movimiento_id=ultima_nomina.id).all()
+            print(f"DEBUG - Empleado: {empleado.nombre} - Última nómina: {ultima_nomina.num_factura}")
             
             for concepto in conceptos:
+                print(f"DEBUG - Concepto: Cuenta {concepto.cuenta.cuenta} - {concepto.cuenta.nombre}, Importe: {concepto.importe}")
                 if concepto.cuenta.cuenta == '640000000001':  # Sueldos
                     valores_default['liquido_percibir'] = concepto.importe
+                    print(f"DEBUG - Asignado liquido_percibir: {concepto.importe}")
                 elif concepto.cuenta.cuenta == '47510000001':  # Retención
                     valores_default['retencion_irpf'] = concepto.importe
+                    print(f"DEBUG - Asignado retencion_irpf: {concepto.importe}")
                 elif concepto.cuenta.cuenta == '642000000002':  # SS Trabajador
                     valores_default['ss_trabajador'] = concepto.importe
+                    print(f"DEBUG - Asignado ss_trabajador: {concepto.importe}")
                 elif concepto.cuenta.cuenta == '642000000001':  # SS Empresa
                     valores_default['ss_empresa'] = concepto.importe
+                    print(f"DEBUG - Asignado ss_empresa: {concepto.importe}")
                 elif concepto.cuenta.cuenta == '649000000002':  # Dietas
                     valores_default['dietas'] = concepto.importe
+                    print(f"DEBUG - Asignado dietas: {concepto.importe}")
+                else:
+                    print(f"DEBUG - Cuenta NO reconocida: {concepto.cuenta.cuenta}")
+            
+            print(f"DEBUG - Valores finales para {empleado.nombre}: {valores_default}")
+        else:
+            print(f"DEBUG - Empleado: {empleado.nombre} - No se encontró ninguna nómina anterior")
         
         # Obtener configuración actual o usar valores de la última nómina
         config_key = f'nomina_config_{empleado.id}'
@@ -1577,7 +1639,7 @@ def ver_todas_nominas():
             'tiene_ultima_nomina': ultima_nomina is not None
         })
     
-    return render_template('ver_todas_nominas.html', empleados_config=empleados_config, general_config=general_config)
+    return render_template('ver_todas_nominas.html', empleados_config=empleados_config, general_config=config_display)
 
 @app.route('/guardar_config_empleado/<int:empleado_id>', methods=['POST'])
 @login_required
