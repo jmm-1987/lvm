@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Gasoil - LVM</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 25px;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 1px solid #e9ecef;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        
+        .card-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+        
+        .card h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 1.3em;
+        }
+        
+        .card p {
+            margin: 0;
+            color: #666;
+            line-height: 1.5;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            margin: 5px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(86, 171, 47, 0.4);
+        }
+        
+        .btn-info {
+            background: linear-gradient(135deg, #3498db 0%, #85c1e9 100%);
+            color: white;
+        }
+        
+        .btn-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #f39c12 0%, #f7dc6f 100%);
+            color: white;
+        }
+        
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(243, 156, 18, 0.4);
+        }
+        
+        .vehiculos-section {
+            margin-top: 40px;
+        }
+        
+        .vehiculos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .vehiculo-card {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .vehiculo-card:hover {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        
+        .vehiculo-card h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 1.2em;
+        }
+        
+        .vehiculo-card p {
+            margin: 5px 0;
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-activo {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-inactivo {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+        
+        .flash-message {
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        
+        .flash-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .flash-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .flash-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⛽ Control de Gasoil</h1>
+            <p>Gestión y análisis de consumos de combustible</p>
+            <div style="margin-top: 20px;">
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">🏠 Volver al Inicio</a>
+            </div>
+        </div>
+        
+        <div class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="flash-message flash-{{ category }}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            <div class="dashboard">
+                <div class="card">
+                    <div class="card-icon">🚗</div>
+                    <h3>Gestión de Vehículos</h3>
+                    <p>Registra y administra tu flota de vehículos</p>
+                    <a href="{{ url_for('listar_vehiculos') }}" class="btn btn-primary">Ver Vehículos</a>
+                    <a href="{{ url_for('nuevo_vehiculo') }}" class="btn btn-success">Nuevo Vehículo</a>
+                </div>
+                
+                <div class="card">
+                    <div class="card-icon">⛽</div>
+                    <h3>Registro de Consumos</h3>
+                    <p>Registra los consumos de gasoil mes a mes</p>
+                    <a href="{{ url_for('listar_consumos') }}" class="btn btn-primary">Ver Consumos</a>
+                    <a href="{{ url_for('nuevo_consumo') }}" class="btn btn-success">Nuevo Consumo</a>
+                </div>
+                
+                <div class="card">
+                    <div class="card-icon">📊</div>
+                    <h3>Análisis y Estadísticas</h3>
+                    <p>Gráficos y análisis de consumos</p>
+                    <a href="{{ url_for('analisis_gasoil') }}" class="btn btn-info">Ver Análisis</a>
+                </div>
+            </div>
+            
+            {% if vehiculos %}
+            <div class="vehiculos-section">
+                <h2>🚗 Vehículos Activos</h2>
+                <div class="vehiculos-grid">
+                    {% for vehiculo in vehiculos %}
+                    <div class="vehiculo-card">
+                        <h4>{{ vehiculo.matricula }}</h4>
+                        <p><strong>Marca:</strong> {{ vehiculo.marca }}</p>
+                        <p><strong>Modelo:</strong> {{ vehiculo.modelo }}</p>
+                        <p><strong>Año:</strong> {{ vehiculo.año_compra }}</p>
+                        <p><strong>Estado:</strong> 
+                            <span class="status-badge status-{{ 'activo' if vehiculo.activo else 'inactivo' }}">
+                                {{ 'Activo' if vehiculo.activo else 'Inactivo' }}
+                            </span>
+                        </p>
+                        {% if vehiculo.observaciones %}
+                        <p><strong>Observaciones:</strong> {{ vehiculo.observaciones }}</p>
+                        {% endif %}
+                        <div style="margin-top: 15px;">
+                            <a href="{{ url_for('editar_vehiculo', id=vehiculo.id) }}" class="btn btn-primary" style="padding: 8px 15px; font-size: 0.9em;">Editar</a>
+                            <a href="{{ url_for('listar_consumos', vehiculo_id=vehiculo.id) }}" class="btn btn-info" style="padding: 8px 15px; font-size: 0.9em;">Consumos</a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% else %}
+            <div class="card" style="text-align: center; margin-top: 40px;">
+                <div class="card-icon">🚗</div>
+                <h3>No hay vehículos registrados</h3>
+                <p>Comienza registrando tu primer vehículo para empezar a controlar los consumos de gasoil.</p>
+                <a href="{{ url_for('nuevo_vehiculo') }}" class="btn btn-success">Registrar Primer Vehículo</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

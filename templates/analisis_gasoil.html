@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análisis de Gasoil - LVM</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .filters {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .filters h3 {
+            margin: 0 0 20px 0;
+            color: #333;
+            font-size: 1.2em;
+        }
+        
+        .filter-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            align-items: end;
+        }
+        
+        .form-group {
+            margin-bottom: 0;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 0.9em;
+        }
+        
+        .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+        }
+        
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .stat-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 25px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+            transition: transform 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .stat-card h4 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 1.1em;
+        }
+        
+        .stat-card .value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .stat-card .unit {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .chart-container {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid #e9ecef;
+        }
+        
+        .chart-container h3 {
+            margin: 0 0 20px 0;
+            color: #333;
+            text-align: center;
+        }
+        
+        .chart-wrapper {
+            position: relative;
+            height: 300px;
+        }
+        
+        .actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(86, 171, 47, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+        
+        .btn-info {
+            background: linear-gradient(135deg, #3498db 0%, #85c1e9 100%);
+            color: white;
+        }
+        
+        .btn-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        
+        .empty-state h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+        
+        .empty-state p {
+            margin: 0 0 25px 0;
+            font-size: 1.1em;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+            text-transform: uppercase;
+            font-size: 0.9em;
+            letter-spacing: 0.5px;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .number {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+        }
+        
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .chart-wrapper {
+                height: 250px;
+            }
+            
+            .actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Análisis de Gasoil</h1>
+        </div>
+        
+        <div class="content">
+            <div class="filters">
+                <h3>🔍 Filtros de Análisis</h3>
+                <form method="GET" class="filter-row">
+                    <div class="form-group">
+                        <label for="vehiculo_id">Vehículo:</label>
+                        <select id="vehiculo_id" name="vehiculo_id">
+                            <option value="">Todos los vehículos</option>
+                            {% for vehiculo in vehiculos %}
+                            <option value="{{ vehiculo.id }}" {% if vehiculo.id == vehiculo_seleccionado %}selected{% endif %}>
+                                {{ vehiculo.matricula }} - {{ vehiculo.marca }} {{ vehiculo.modelo }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="año">Año:</label>
+                        <select id="año" name="año">
+                            {% for año in range(2020, datetime.now().year + 2) %}
+                            <option value="{{ año }}" {% if año == año_seleccionado %}selected{% endif %}>{{ año }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">Aplicar Filtros</button>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="actions">
+                <div>
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary">🏠 Inicio</a>
+                    <a href="{{ url_for('control_gasoil') }}" class="btn btn-secondary">← Volver al Control</a>
+                    <a href="{{ url_for('listar_consumos') }}" class="btn btn-info">Ver Consumos</a>
+                </div>
+                <div>
+                    <a href="{{ url_for('listar_vehiculos') }}" class="btn btn-primary">Ver Vehículos</a>
+                    <a href="{{ url_for('nuevo_consumo') }}" class="btn btn-success">+ Nuevo Consumo</a>
+                </div>
+            </div>
+            
+            {% if consumos %}
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h4>⛽ Total Litros</h4>
+                    <div class="value">{{ "%.1f"|format(total_litros) }}</div>
+                    <div class="unit">litros</div>
+                </div>
+                <div class="stat-card">
+                    <h4>💰 Total Gasto</h4>
+                    <div class="value">{{ "%.0f"|format(total_gasto) }}</div>
+                    <div class="unit">euros</div>
+                </div>
+                <div class="stat-card">
+                    <h4>💵 Total Facturación</h4>
+                    <div class="value">{{ "%.0f"|format(total_facturacion) }}</div>
+                    <div class="unit">euros</div>
+                </div>
+                <div class="stat-card">
+                    <h4>📊 Rentabilidad</h4>
+                    <div class="value" style="color: {{ '#4caf50' if rentabilidad >= 0 else '#f44336' }}">{{ "%.0f"|format(rentabilidad) }}</div>
+                    <div class="unit">euros</div>
+                </div>
+                <div class="stat-card">
+                    <h4>🛣️ Total Kilómetros</h4>
+                    <div class="value">{{ "%.0f"|format(total_kms) }}</div>
+                    <div class="unit">km</div>
+                </div>
+                <div class="stat-card">
+                    <h4>📈 Precio Promedio</h4>
+                    <div class="value">{{ "%.3f"|format(precio_promedio) }}</div>
+                    <div class="unit">€/litro</div>
+                </div>
+                <div class="stat-card">
+                    <h4>🚗 Consumo por Km</h4>
+                    <div class="value">{{ "%.2f"|format(consumo_por_km) }}</div>
+                    <div class="unit">L/100km</div>
+                </div>
+            </div>
+            
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3>📊 Consumo Mensual (Litros)</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="litrosChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <h3>💰 Gasto Mensual (Euros)</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="gastoChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <h3>🛣️ Kilómetros Mensuales</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="kmsChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <h3>📈 Precio por Litro Mensual</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="precioChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <h3>💵 Facturación Mensual (€)</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="facturacionChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <h3>📊 Rentabilidad Mensual (€)</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="rentabilidadChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <h3>📋 Resumen por Mes</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Mes</th>
+                                <th>Litros</th>
+                                <th>Gasto (€)</th>
+                                <th>Facturación (€)</th>
+                                <th>Rentabilidad (€)</th>
+                                <th>Kilómetros</th>
+                                <th>Precio Promedio (€/L)</th>
+                                <th>Consumo (L/100km)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for mes, datos in datos_mensuales.items() %}
+                            <tr>
+                                <td>{{ ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][mes-1] }}</td>
+                                <td class="number">{{ "%.1f"|format(datos.litros) }}</td>
+                                <td class="number">{{ "%.2f"|format(datos.gasto) }}</td>
+                                <td class="number">
+                                    {% if datos.facturacion %}
+                                        {% if datos.facturacion is number %}
+                                            {{ "%.2f"|format(datos.facturacion) }}
+                                        {% else %}
+                                            {{ datos.facturacion }}
+                                        {% endif %}
+                                    {% else %}
+                                        0.00
+                                    {% endif %}
+                                </td>
+                                <td class="number" style="color: {{ '#4caf50' if (datos.facturacion|float - datos.gasto) >= 0 else '#f44336' }}">
+                                    {% set facturacion_num = datos.facturacion|float if datos.facturacion else 0 %}
+                                    {{ "%.2f"|format(facturacion_num - datos.gasto) }}
+                                </td>
+                                <td class="number">{{ "%.0f"|format(datos.kms) }}</td>
+                                <td class="number">{{ "%.3f"|format(datos.gasto / datos.litros if datos.litros > 0 else 0) }}</td>
+                                <td class="number">{{ "%.2f"|format((datos.litros / datos.kms * 100) if datos.kms > 0 else 0) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            {% else %}
+            <div class="empty-state">
+                <h3>📊 No hay datos para analizar</h3>
+                <p>{% if vehiculo_seleccionado %}No se encontraron consumos para el vehículo seleccionado en el año {{ año_seleccionado }}.{% else %}No se encontraron consumos para el año {{ año_seleccionado }}.{% endif %}</p>
+                <a href="{{ url_for('nuevo_consumo') }}" class="btn btn-success">Registrar Primer Consumo</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    {% if consumos %}
+    <script>
+        // Preparar datos para los gráficos
+        const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const datosMensuales = {{ datos_mensuales | tojson }};
+        
+        // Crear arrays de datos para cada gráfico
+        const litrosData = [];
+        const gastoData = [];
+        const kmsData = [];
+        const precioData = [];
+        const facturacionData = [];
+        const rentabilidadData = [];
+        
+        for (let i = 1; i <= 12; i++) {
+            const datos = datosMensuales[i] || { litros: 0, gasto: 0, kms: 0, facturacion: 0 };
+            litrosData.push(datos.litros);
+            gastoData.push(datos.gasto);
+            kmsData.push(datos.kms);
+            precioData.push(datos.kms > 0 ? (datos.gasto / datos.litros) : 0);
+            facturacionData.push(datos.facturacion);
+            rentabilidadData.push(datos.facturacion - datos.gasto);
+        }
+        
+        // Configuración común para los gráficos
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        };
+        
+        // Gráfico de litros
+        new Chart(document.getElementById('litrosChart'), {
+            type: 'bar',
+            data: {
+                labels: meses,
+                datasets: [{
+                    data: litrosData,
+                    backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                    borderColor: 'rgba(102, 126, 234, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: chartOptions
+        });
+        
+        // Gráfico de gasto
+        new Chart(document.getElementById('gastoChart'), {
+            type: 'bar',
+            data: {
+                labels: meses,
+                datasets: [{
+                    data: gastoData,
+                    backgroundColor: 'rgba(86, 171, 47, 0.8)',
+                    borderColor: 'rgba(86, 171, 47, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: chartOptions
+        });
+        
+        // Gráfico de kilómetros
+        new Chart(document.getElementById('kmsChart'), {
+            type: 'line',
+            data: {
+                labels: meses,
+                datasets: [{
+                    data: kmsData,
+                    backgroundColor: 'rgba(52, 152, 219, 0.2)',
+                    borderColor: 'rgba(52, 152, 219, 1)',
+                    borderWidth: 2,
+                    fill: true
+                }]
+            },
+            options: chartOptions
+        });
+        
+        // Gráfico de precio
+        new Chart(document.getElementById('precioChart'), {
+            type: 'line',
+            data: {
+                labels: meses,
+                datasets: [{
+                    data: precioData,
+                    backgroundColor: 'rgba(243, 156, 18, 0.2)',
+                    borderColor: 'rgba(243, 156, 18, 1)',
+                    borderWidth: 2,
+                    fill: true
+                }]
+            },
+            options: chartOptions
+        });
+        
+        // Gráfico de facturación
+        new Chart(document.getElementById('facturacionChart'), {
+            type: 'bar',
+            data: {
+                labels: meses,
+                datasets: [{
+                    data: facturacionData,
+                    backgroundColor: 'rgba(46, 204, 113, 0.8)',
+                    borderColor: 'rgba(46, 204, 113, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: chartOptions
+        });
+        
+        // Gráfico de rentabilidad
+        new Chart(document.getElementById('rentabilidadChart'), {
+            type: 'bar',
+            data: {
+                labels: meses,
+                datasets: [{
+                    data: rentabilidadData,
+                    backgroundColor: rentabilidadData.map(val => val >= 0 ? 'rgba(46, 204, 113, 0.8)' : 'rgba(231, 76, 60, 0.8)'),
+                    borderColor: rentabilidadData.map(val => val >= 0 ? 'rgba(46, 204, 113, 1)' : 'rgba(231, 76, 60, 1)'),
+                    borderWidth: 1
+                }]
+            },
+            options: chartOptions
+        });
+    </script>
+    {% endif %}
+</body>
+</html>

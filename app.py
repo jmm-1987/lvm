@@ -25,6 +25,11 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
+# Añadir datetime al contexto global de Jinja2
+@app.context_processor
+def inject_datetime():
+    return dict(datetime=datetime)
+
 # Modelo de Cuenta
 class Cuenta(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -58,6 +63,31 @@ class MovimientoConcepto(db.Model):
     contrapartida = db.relationship('Cuenta', foreign_keys=[contrapartida_id]) # Relación con la cuenta de contrapartida
 
 Movimiento.conceptos = db.relationship('MovimientoConcepto', backref='movimiento', cascade='all, delete-orphan')
+
+# Modelo de Vehículo
+class Vehiculo(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    matricula = db.Column(db.String(20), nullable=False, unique=True)
+    marca = db.Column(db.String(50), nullable=False)
+    modelo = db.Column(db.String(50), nullable=False)
+    año_compra = db.Column(db.Integer, nullable=False)
+    fecha_alta = db.Column(db.String(20), nullable=False, default=lambda: datetime.now().strftime('%Y-%m-%d'))
+    activo = db.Column(db.Boolean, nullable=False, default=True)
+    observaciones = db.Column(db.String(255), nullable=True)
+
+# Modelo de Consumo de Gasoil
+class ConsumoGasoil(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    vehiculo_id = db.Column(db.Integer, db.ForeignKey('vehiculo.id'), nullable=False)
+    fecha = db.Column(db.String(20), nullable=False)  # Formato YYYY-MM-DD
+    litros = db.Column(db.Float, nullable=False)
+    precio_litro = db.Column(db.Float, nullable=False)
+    total = db.Column(db.Float, nullable=False)  # litros * precio_litro
+    kms = db.Column(db.Float, nullable=False)
+    facturacion = db.Column(db.Float, nullable=True)  # Ingresos generados por el vehículo
+    observaciones = db.Column(db.String(255), nullable=True)
+    
+    vehiculo = db.relationship('Vehiculo', backref='consumos')
 
 # Eliminar el modelo Usuario y la tabla de usuarios
 # Definir un usuario en memoria para Flask-Login
@@ -1659,7 +1689,302 @@ def guardar_config_empleado(empleado_id):
     flash(f'Configuración de {empleado.nombre} guardada correctamente.', 'success')
     return redirect(url_for('ver_todas_nominas'))
 
+# ==================== CONTROL DE GASOIL ====================
+
+@app.route('/control_gasoil')
+@login_required
+def control_gasoil():
+    """Página principal del control de gasoil"""
+    vehiculos = Vehiculo.query.filter_by(activo=True).all()
+    return render_template('control_gasoil.html', vehiculos=vehiculos)
+
+# Gestión de vehículos
+@app.route('/control_gasoil/vehiculos')
+@login_required
+def listar_vehiculos():
+    """Listar todos los vehículos"""
+    vehiculos = Vehiculo.query.order_by(Vehiculo.matricula).all()
+    return render_template('vehiculos.html', vehiculos=vehiculos)
+
+@app.route('/control_gasoil/vehiculos/nuevo', methods=['GET', 'POST'])
+@login_required
+def nuevo_vehiculo():
+    """Crear nuevo vehículo"""
+    if request.method == 'POST':
+        matricula = request.form['matricula'].upper().strip()
+        marca = request.form['marca'].strip()
+        modelo = request.form['modelo'].strip()
+        año_compra = int(request.form['año_compra'])
+        observaciones = request.form.get('observaciones', '').strip()
+        
+        # Verificar que la matrícula no esté duplicada
+        existe = Vehiculo.query.filter_by(matricula=matricula).first()
+        if existe:
+            flash('Ya existe un vehículo con esa matrícula.', 'error')
+            return render_template('vehiculo_form.html')
+        
+        nuevo_vehiculo = Vehiculo(
+            matricula=matricula,
+            marca=marca,
+            modelo=modelo,
+            año_compra=año_compra,
+            observaciones=observaciones
+        )
+        
+        db.session.add(nuevo_vehiculo)
+        db.session.commit()
+        flash('Vehículo creado correctamente.', 'success')
+        return redirect(url_for('listar_vehiculos'))
+    
+    return render_template('vehiculo_form.html')
+
+@app.route('/control_gasoil/vehiculos/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
+def editar_vehiculo(id):
+    """Editar vehículo existente"""
+    vehiculo = Vehiculo.query.get_or_404(id)
+    
+    if request.method == 'POST':
+        matricula = request.form['matricula'].upper().strip()
+        marca = request.form['marca'].strip()
+        modelo = request.form['modelo'].strip()
+        año_compra = int(request.form['año_compra'])
+        observaciones = request.form.get('observaciones', '').strip()
+        activo = 'activo' in request.form
+        
+        # Verificar que la matrícula no esté duplicada (excepto el propio vehículo)
+        existe = Vehiculo.query.filter(Vehiculo.matricula == matricula, Vehiculo.id != id).first()
+        if existe:
+            flash('Ya existe un vehículo con esa matrícula.', 'error')
+            return render_template('vehiculo_form.html', vehiculo=vehiculo)
+        
+        vehiculo.matricula = matricula
+        vehiculo.marca = marca
+        vehiculo.modelo = modelo
+        vehiculo.año_compra = año_compra
+        vehiculo.observaciones = observaciones
+        vehiculo.activo = activo
+        
+        db.session.commit()
+        flash('Vehículo actualizado correctamente.', 'success')
+        return redirect(url_for('listar_vehiculos'))
+    
+    return render_template('vehiculo_form.html', vehiculo=vehiculo)
+
+@app.route('/control_gasoil/vehiculos/borrar/<int:id>', methods=['POST'])
+@login_required
+def borrar_vehiculo(id):
+    """Borrar vehículo (marcar como inactivo)"""
+    vehiculo = Vehiculo.query.get_or_404(id)
+    
+    # Verificar si tiene consumos asociados
+    if vehiculo.consumos:
+        flash('No se puede borrar el vehículo porque tiene consumos asociados. Se marcará como inactivo.', 'warning')
+        vehiculo.activo = False
+        db.session.commit()
+    else:
+        db.session.delete(vehiculo)
+        db.session.commit()
+        flash('Vehículo borrado correctamente.', 'success')
+    
+    return redirect(url_for('listar_vehiculos'))
+
+# Gestión de consumos
+@app.route('/control_gasoil/consumos')
+@login_required
+def listar_consumos():
+    """Listar todos los consumos"""
+    vehiculo_id = request.args.get('vehiculo_id', type=int)
+    año = request.args.get('año', type=int)
+    mes = request.args.get('mes', type=int)
+    
+    query = ConsumoGasoil.query.join(Vehiculo)
+    
+    if vehiculo_id:
+        query = query.filter(ConsumoGasoil.vehiculo_id == vehiculo_id)
+    if año:
+        query = query.filter(db.func.strftime('%Y', ConsumoGasoil.fecha) == str(año))
+    if mes:
+        query = query.filter(db.func.strftime('%m', ConsumoGasoil.fecha) == f"{mes:02d}")
+    
+    consumos = query.order_by(ConsumoGasoil.fecha.desc()).all()
+    vehiculos = Vehiculo.query.filter_by(activo=True).all()
+    
+    return render_template('consumos.html', consumos=consumos, vehiculos=vehiculos, 
+                         vehiculo_seleccionado=vehiculo_id, año_seleccionado=año, mes_seleccionado=mes)
+
+@app.route('/control_gasoil/consumos/nuevo', methods=['GET', 'POST'])
+@login_required
+def nuevo_consumo():
+    """Crear nuevo consumo"""
+    vehiculos = Vehiculo.query.filter_by(activo=True).all()
+    
+    if request.method == 'POST':
+        vehiculo_id = int(request.form['vehiculo_id'])
+        fecha = request.form['fecha']
+        litros = float(request.form['litros'])
+        precio_total = float(request.form['precio_total'])
+        kms = float(request.form['kms'])
+        facturacion = float(request.form.get('facturacion', 0)) if request.form.get('facturacion') else None
+        observaciones = request.form.get('observaciones', '').strip()
+        
+        # Convertir fecha de dd/mm/yyyy a yyyy-mm-dd si es necesario
+        if '/' in fecha and len(fecha.split('/')) == 3:
+            partes = fecha.split('/')
+            if len(partes[0]) == 2 and len(partes[1]) == 2 and len(partes[2]) == 4:
+                fecha = f"{partes[2]}-{partes[1]}-{partes[0]}"
+        
+        # Calcular precio por litro
+        precio_litro = precio_total / litros if litros > 0 else 0
+        total = precio_total
+        
+        nuevo_consumo = ConsumoGasoil(
+            vehiculo_id=vehiculo_id,
+            fecha=fecha,
+            litros=litros,
+            precio_litro=precio_litro,
+            total=total,
+            kms=kms,
+            facturacion=facturacion,
+            observaciones=observaciones
+        )
+        
+        db.session.add(nuevo_consumo)
+        db.session.commit()
+        flash('Consumo registrado correctamente.', 'success')
+        return redirect(url_for('listar_consumos'))
+    
+    return render_template('consumo_form.html', vehiculos=vehiculos)
+
+@app.route('/control_gasoil/consumos/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
+def editar_consumo(id):
+    """Editar consumo existente"""
+    consumo = ConsumoGasoil.query.get_or_404(id)
+    vehiculos = Vehiculo.query.filter_by(activo=True).all()
+    
+    if request.method == 'POST':
+        vehiculo_id = int(request.form['vehiculo_id'])
+        fecha = request.form['fecha']
+        litros = float(request.form['litros'])
+        precio_total = float(request.form['precio_total'])
+        kms = float(request.form['kms'])
+        facturacion = float(request.form.get('facturacion', 0)) if request.form.get('facturacion') else None
+        observaciones = request.form.get('observaciones', '').strip()
+        
+        # Convertir fecha de dd/mm/yyyy a yyyy-mm-dd si es necesario
+        if '/' in fecha and len(fecha.split('/')) == 3:
+            partes = fecha.split('/')
+            if len(partes[0]) == 2 and len(partes[1]) == 2 and len(partes[2]) == 4:
+                fecha = f"{partes[2]}-{partes[1]}-{partes[0]}"
+        
+        # Calcular precio por litro
+        precio_litro = precio_total / litros if litros > 0 else 0
+        total = precio_total
+        
+        consumo.vehiculo_id = vehiculo_id
+        consumo.fecha = fecha
+        consumo.litros = litros
+        consumo.precio_litro = precio_litro
+        consumo.total = total
+        consumo.kms = kms
+        consumo.facturacion = facturacion
+        consumo.observaciones = observaciones
+        
+        db.session.commit()
+        flash('Consumo actualizado correctamente.', 'success')
+        return redirect(url_for('listar_consumos'))
+    
+    return render_template('consumo_form.html', consumo=consumo, vehiculos=vehiculos)
+
+@app.route('/control_gasoil/consumos/borrar/<int:id>', methods=['POST'])
+@login_required
+def borrar_consumo(id):
+    """Borrar consumo"""
+    consumo = ConsumoGasoil.query.get_or_404(id)
+    db.session.delete(consumo)
+    db.session.commit()
+    flash('Consumo borrado correctamente.', 'success')
+    return redirect(url_for('listar_consumos'))
+
+# Análisis y estadísticas
+@app.route('/control_gasoil/analisis')
+@login_required
+def analisis_gasoil():
+    """Página de análisis y estadísticas"""
+    vehiculo_id = request.args.get('vehiculo_id', type=int)
+    año = request.args.get('año', type=int) or datetime.now().year
+    
+    # Obtener datos para análisis
+    query = ConsumoGasoil.query.join(Vehiculo)
+    if vehiculo_id:
+        query = query.filter(ConsumoGasoil.vehiculo_id == vehiculo_id)
+    
+    # Filtrar por año
+    query = query.filter(db.func.strftime('%Y', ConsumoGasoil.fecha) == str(año))
+    
+    consumos = query.order_by(ConsumoGasoil.fecha).all()
+    vehiculos = Vehiculo.query.filter_by(activo=True).all()
+    
+    # Calcular estadísticas
+    if consumos:
+        total_litros = sum(c.litros for c in consumos)
+        total_gasto = sum(c.total for c in consumos)
+        total_kms = sum(c.kms for c in consumos)
+        total_facturacion = sum(float(c.facturacion) if c.facturacion and str(c.facturacion).replace('.', '').replace('-', '').isdigit() else 0 for c in consumos)
+        precio_promedio = total_gasto / total_litros if total_litros > 0 else 0
+        consumo_por_km = total_litros / total_kms if total_kms > 0 else 0
+        rentabilidad = total_facturacion - total_gasto if total_facturacion else 0
+        
+        # Datos por mes
+        datos_mensuales = {}
+        for consumo in consumos:
+            mes = datetime.strptime(consumo.fecha, '%Y-%m-%d').month
+            if mes not in datos_mensuales:
+                datos_mensuales[mes] = {'litros': 0, 'gasto': 0, 'kms': 0, 'facturacion': 0}
+            datos_mensuales[mes]['litros'] += consumo.litros
+            datos_mensuales[mes]['gasto'] += consumo.total
+            datos_mensuales[mes]['kms'] += consumo.kms
+            if consumo.facturacion:
+                facturacion_val = float(consumo.facturacion) if str(consumo.facturacion).replace('.', '').replace('-', '').isdigit() else 0
+                datos_mensuales[mes]['facturacion'] += facturacion_val
+    else:
+        total_litros = total_gasto = total_kms = total_facturacion = precio_promedio = consumo_por_km = rentabilidad = 0
+        datos_mensuales = {}
+    
+    return render_template('analisis_gasoil.html', 
+                         consumos=consumos,
+                         vehiculos=vehiculos,
+                         vehiculo_seleccionado=vehiculo_id,
+                         año_seleccionado=año,
+                         total_litros=total_litros,
+                         total_gasto=total_gasto,
+                         total_kms=total_kms,
+                         total_facturacion=total_facturacion,
+                         precio_promedio=precio_promedio,
+                         consumo_por_km=consumo_por_km,
+                         rentabilidad=rentabilidad,
+                         datos_mensuales=datos_mensuales)
+
+# Función para migrar datos existentes de facturación de string a float
+def migrar_facturacion():
+    """Migra los datos de facturación de string a float"""
+    with app.app_context():
+        consumos = ConsumoGasoil.query.all()
+        for consumo in consumos:
+            if consumo.facturacion and isinstance(consumo.facturacion, str):
+                try:
+                    # Intentar convertir a float
+                    consumo.facturacion = float(consumo.facturacion)
+                except (ValueError, TypeError):
+                    # Si no se puede convertir, poner a None
+                    consumo.facturacion = None
+        db.session.commit()
+        print("Migración de facturación completada")
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        # Ejecutar migración de facturación
+        migrar_facturacion()
     app.run(debug=True) 

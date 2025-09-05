@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consumos de Gasoil - LVM</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .filters {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .filters h3 {
+            margin: 0 0 20px 0;
+            color: #333;
+            font-size: 1.2em;
+        }
+        
+        .filter-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            align-items: end;
+        }
+        
+        .form-group {
+            margin-bottom: 0;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 0.9em;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+        }
+        
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(86, 171, 47, 0.4);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #f39c12 0%, #f7dc6f 100%);
+            color: white;
+        }
+        
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(243, 156, 18, 0.4);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #e74c3c 0%, #f1948a 100%);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+        
+        .btn-info {
+            background: linear-gradient(135deg, #3498db 0%, #85c1e9 100%);
+            color: white;
+        }
+        
+        .btn-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+            text-transform: uppercase;
+            font-size: 0.9em;
+            letter-spacing: 0.5px;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .actions-cell {
+            white-space: nowrap;
+        }
+        
+        .actions-cell .btn {
+            padding: 8px 12px;
+            font-size: 0.9em;
+            margin: 2px;
+        }
+        
+        .number {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+        
+        .flash-message {
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        
+        .flash-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .flash-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .flash-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        
+        .empty-state h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+        
+        .empty-state p {
+            margin: 0 0 25px 0;
+            font-size: 1.1em;
+        }
+        
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .summary-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }
+        
+        .summary-card h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 1.1em;
+        }
+        
+        .summary-card .value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        @media (max-width: 768px) {
+            .actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .actions .btn {
+                margin: 5px 0;
+            }
+            
+            .filter-row {
+                grid-template-columns: 1fr;
+            }
+            
+            table {
+                font-size: 0.9em;
+            }
+            
+            th, td {
+                padding: 10px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⛽ Consumos de Gasoil</h1>
+        </div>
+        
+        <div class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="flash-message flash-{{ category }}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            <div class="filters">
+                <h3>🔍 Filtros</h3>
+                <form method="GET" class="filter-row">
+                    <div class="form-group">
+                        <label for="vehiculo_id">Vehículo:</label>
+                        <select id="vehiculo_id" name="vehiculo_id">
+                            <option value="">Todos los vehículos</option>
+                            {% for vehiculo in vehiculos %}
+                            <option value="{{ vehiculo.id }}" {% if vehiculo.id == vehiculo_seleccionado %}selected{% endif %}>
+                                {{ vehiculo.matricula }} - {{ vehiculo.marca }} {{ vehiculo.modelo }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="año">Año:</label>
+                        <select id="año" name="año">
+                            <option value="">Todos los años</option>
+                            {% for año in range(2020, datetime.now().year + 2) %}
+                            <option value="{{ año }}" {% if año == año_seleccionado %}selected{% endif %}>{{ año }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="mes">Mes:</label>
+                        <select id="mes" name="mes">
+                            <option value="">Todos los meses</option>
+                            {% for mes in range(1, 13) %}
+                            <option value="{{ mes }}" {% if mes == mes_seleccionado %}selected{% endif %}>
+                                {{ ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][mes-1] }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">Filtrar</button>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="actions">
+                <div>
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary">🏠 Inicio</a>
+                    <a href="{{ url_for('control_gasoil') }}" class="btn btn-secondary">← Volver al Control</a>
+                    <a href="{{ url_for('nuevo_consumo') }}" class="btn btn-success">+ Nuevo Consumo</a>
+                </div>
+                <div>
+                    <a href="{{ url_for('listar_vehiculos') }}" class="btn btn-info">Ver Vehículos</a>
+                    <a href="{{ url_for('analisis_gasoil') }}" class="btn btn-warning">Análisis</a>
+                </div>
+            </div>
+            
+            {% if consumos %}
+            {% set total_litros = consumos | sum(attribute='litros') %}
+            {% set total_gasto = consumos | sum(attribute='total') %}
+            {% set total_kms = consumos | sum(attribute='kms') %}
+            {% set precio_promedio = (total_gasto / total_litros) if total_litros > 0 else 0 %}
+            
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <h4>Total Litros</h4>
+                    <div class="value">{{ "%.1f"|format(total_litros) }}</div>
+                </div>
+                <div class="summary-card">
+                    <h4>Total Gasto</h4>
+                    <div class="value">{{ "%.2f"|format(total_gasto) }}€</div>
+                </div>
+                <div class="summary-card">
+                    <h4>Total Kms</h4>
+                    <div class="value">{{ "%.0f"|format(total_kms) }}</div>
+                </div>
+                <div class="summary-card">
+                    <h4>Precio Promedio</h4>
+                    <div class="value">{{ "%.3f"|format(precio_promedio) }}€/L</div>
+                </div>
+            </div>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Vehículo</th>
+                            <th>Litros</th>
+                            <th>Precio/L</th>
+                            <th>Total</th>
+                            <th>Kms</th>
+                            <th>Facturación</th>
+                            <th>Observaciones</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for consumo in consumos %}
+                        <tr>
+                            <td>{{ consumo.fecha }}</td>
+                            <td><strong>{{ consumo.vehiculo.matricula }}</strong><br>
+                                <small>{{ consumo.vehiculo.marca }} {{ consumo.vehiculo.modelo }}</small>
+                            </td>
+                            <td class="number">{{ "%.1f"|format(consumo.litros) }}</td>
+                            <td class="number">{{ "%.3f"|format(consumo.precio_litro) }}€</td>
+                            <td class="number"><strong>{{ "%.2f"|format(consumo.total) }}€</strong></td>
+                            <td class="number">{{ "%.0f"|format(consumo.kms) }}</td>
+                            <td class="number">
+                                {% if consumo.facturacion %}
+                                    {% if consumo.facturacion is number %}
+                                        {{ "%.2f"|format(consumo.facturacion) }}€
+                                    {% else %}
+                                        {{ consumo.facturacion }}€
+                                    {% endif %}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ consumo.observaciones or '-' }}</td>
+                            <td class="actions-cell">
+                                <a href="{{ url_for('editar_consumo', id=consumo.id) }}" class="btn btn-warning">Editar</a>
+                                <form method="POST" action="{{ url_for('borrar_consumo', id=consumo.id) }}" style="display: inline;" onsubmit="return confirm('¿Estás seguro de que quieres eliminar este consumo?')">
+                                    <button type="submit" class="btn btn-danger">Eliminar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <h3>⛽ No hay consumos registrados</h3>
+                <p>{% if vehiculo_seleccionado %}No se encontraron consumos para el vehículo seleccionado.{% else %}Comienza registrando el primer consumo de gasoil.{% endif %}</p>
+                <a href="{{ url_for('nuevo_consumo') }}" class="btn btn-success">Registrar Primer Consumo</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
