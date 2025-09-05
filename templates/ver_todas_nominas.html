@@ -564,8 +564,8 @@
                                         </div>
                                     </td>
                                     <td class="amount-cell positive">{{ "%.2f"|format(item.config.liquido_percibir) }} €</td>
-                                    <td class="amount-cell negative">-{{ "%.2f"|format(item.config.retencion_irpf) }} €</td>
-                                    <td class="amount-cell negative">-{{ "%.2f"|format(item.config.ss_trabajador) }} €</td>
+                                    <td class="amount-cell negative">{{ "%.2f"|format(item.config.retencion_irpf) }} €</td>
+                                    <td class="amount-cell negative">{{ "%.2f"|format(item.config.ss_trabajador) }} €</td>
                                     <td class="amount-cell positive">{{ "%.2f"|format(item.config.ss_empresa) }} €</td>
                                     <td class="amount-cell positive">{{ "%.2f"|format(item.config.dietas) }} €</td>
                                     <td class="total-cell">{{ "%.2f"|format(item.total) }} €</td>
