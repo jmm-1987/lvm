@@ -221,9 +221,7 @@
                 <td colspan="7" style="padding-left:40px; border-bottom: 2px solid #e3eaf2;">
                     <ul style="margin:0; padding:0; list-style:none;">
                     {% for c in conceptos_por_mov[mov.id] %}
-                        {% if not contrapartida_por_mov[mov.id] or c.cuenta_id != contrapartida_por_mov[mov.id].id %}
-                            <li><strong>{{ c.cuenta.cuenta }}</strong> - {{ c.cuenta.nombre }}: {{ '%.2f'|format(c.importe) }} € {% if c.concepto %} <em>({{ c.concepto }})</em>{% endif %}</li>
-                        {% endif %}
+                        <li><strong>{{ c.cuenta.cuenta }}</strong> - {{ c.cuenta.nombre }}: {{ '%.2f'|format(c.importe) }} € {% if c.concepto %} <em>({{ c.concepto }})</em>{% endif %}</li>
                     {% endfor %}
                     </ul>
                 </td>

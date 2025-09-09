@@ -357,6 +357,58 @@ def ver_movimiento(id):
     cuentas_contrapartida = Cuenta.query.filter_by(tipo='contrapartida').all()
     return render_template('movimiento_form.html', movimiento=movimiento, conceptos=conceptos, cuentas_normales=cuentas_normales, cuentas_contrapartida=cuentas_contrapartida, solo_lectura=True)
 
+@app.route('/debug_movimiento/<int:id>')
+@login_required
+def debug_movimiento(id):
+    movimiento = Movimiento.query.get_or_404(id)
+    conceptos = MovimientoConcepto.query.filter_by(movimiento_id=movimiento.id).all()
+    
+    debug_info = f"""
+    <h2>Debug Movimiento ID: {id}</h2>
+    <p><strong>Número de factura:</strong> {movimiento.num_factura}</p>
+    <p><strong>Total del movimiento:</strong> {movimiento.total} €</p>
+    <p><strong>Número de conceptos:</strong> {len(conceptos)}</p>
+    <h3>Conceptos:</h3>
+    <ul>
+    """
+    
+    suma_conceptos = 0
+    for c in conceptos:
+        debug_info += f"<li>Cuenta: {c.cuenta.cuenta} - {c.cuenta.nombre} | Importe: {c.importe} € | Contrapartida: {c.contrapartida.cuenta if c.contrapartida else 'Sin contrapartida'}</li>"
+        suma_conceptos += c.importe
+    
+    debug_info += f"""
+    </ul>
+    <p><strong>Suma de conceptos:</strong> {suma_conceptos} €</p>
+    <p><strong>Diferencia:</strong> {movimiento.total - suma_conceptos} €</p>
+    """
+    
+    return debug_info
+
+@app.route('/buscar_movimiento/<factura>')
+@login_required
+def buscar_movimiento(factura):
+    movimientos = Movimiento.query.filter_by(num_factura=factura).all()
+    
+    debug_info = f"""
+    <h2>Búsqueda de movimientos con factura: {factura}</h2>
+    <p><strong>Número de movimientos encontrados:</strong> {len(movimientos)}</p>
+    """
+    
+    for mov in movimientos:
+        conceptos = MovimientoConcepto.query.filter_by(movimiento_id=mov.id).all()
+        suma_conceptos = sum(c.importe for c in conceptos)
+        debug_info += f"""
+        <h3>Movimiento ID: {mov.id}</h3>
+        <p><strong>Total:</strong> {mov.total} €</p>
+        <p><strong>Suma conceptos:</strong> {suma_conceptos} €</p>
+        <p><strong>Diferencia:</strong> {mov.total - suma_conceptos} €</p>
+        <p><a href="/debug_movimiento/{mov.id}">Ver detalles completos</a></p>
+        <hr>
+        """
+    
+    return debug_info
+
 @app.route('/resultado_explotacion', methods=['GET', 'POST'])
 def resultado_explotacion():
     resultado = None
@@ -425,6 +477,8 @@ def resultado_explotacion():
         
         # Agrupar y sumar importes por cuenta, incluyendo detalles de transacciones
         prefijos = ('623','626','621','622','625','628','629','310','640','641','642','649','662','7')
+        cuentas_excluidas = ('642000000002',)  # Cuentas específicas a excluir del resultado de explotación
+        cuentas_resultado_neto = ('74000000002', '76900000001')  # Cuentas que se suman al resultado neto
         detalle_dict = {}
         for c in conceptos:
             cuenta = str(c.Cuenta.cuenta)
@@ -434,6 +488,10 @@ def resultado_explotacion():
                 if cuenta.startswith(prefijo):
                     incluir_cuenta = True
                     break
+            
+            # Excluir cuentas específicas aunque cumplan con los prefijos
+            if cuenta in cuentas_excluidas or cuenta in cuentas_resultado_neto:
+                incluir_cuenta = False
             
             if incluir_cuenta:
                 key = cuenta
@@ -465,11 +523,53 @@ def resultado_explotacion():
         suma_detalle = sum(d['importe'] for d in detalle)
         suma_7 = sum(d['importe'] for d in detalle if str(d['cuenta']).startswith('7'))
         suma_705 = sum(d['importe'] for d in detalle if str(d['cuenta']).strip() == '70500000001')
-        suma_resto = sum(d['importe'] for d in detalle if str(d['cuenta']).strip() != '70500000001')
+        suma_resto = sum(d['importe'] for d in detalle if not str(d['cuenta']).startswith('7'))
         resultado = suma_7
-        diferencia = resultado - suma_detalle
+        diferencia = suma_resto  # Gastos fijos (todas las cuentas que no son 7)
         resultado_explotacion = suma_705 - suma_resto
-    return render_template('resultado_explotacion.html', resultado=resultado, detalle=detalle, diferencia=diferencia, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, resultado_explotacion=resultado_explotacion)
+        
+        # Calcular importes de las cuentas del resultado neto y agregarlas al detalle
+        suma_resultado_neto = 0
+        detalle_resultado_neto = []
+        
+        for c in conceptos:
+            cuenta = str(c.Cuenta.cuenta)
+            if cuenta in cuentas_resultado_neto:
+                suma_resultado_neto += c.MovimientoConcepto.importe
+                
+                # Agregar al detalle del resultado neto
+                key = cuenta
+                if key not in [d['cuenta'] for d in detalle_resultado_neto]:
+                    detalle_resultado_neto.append({
+                        'cuenta': cuenta,
+                        'nombre': c.Cuenta.nombre,
+                        'importe': 0,
+                        'transacciones': []
+                    })
+                
+                # Encontrar la entrada en detalle_resultado_neto y actualizar
+                for d in detalle_resultado_neto:
+                    if d['cuenta'] == cuenta:
+                        d['importe'] += c.MovimientoConcepto.importe
+                        # Añadir detalles de la transacción
+                        contrapartida_info = ""
+                        if c.MovimientoConcepto.contrapartida:
+                            contrapartida_info = f"{c.MovimientoConcepto.contrapartida.cuenta} - {c.MovimientoConcepto.contrapartida.nombre}"
+                        else:
+                            contrapartida_info = "Sin contrapartida"
+                        
+                        transaccion = {
+                            'fecha': c.Movimiento.fecha_factura,
+                            'contrapartida': contrapartida_info,
+                            'importe': c.MovimientoConcepto.importe,
+                            'concepto': c.MovimientoConcepto.concepto or "Sin concepto"
+                        }
+                        d['transacciones'].append(transaccion)
+                        break
+        
+        # Calcular resultado neto
+        resultado_neto = resultado_explotacion + suma_resultado_neto
+    return render_template('resultado_explotacion.html', resultado=resultado, detalle=detalle, diferencia=diferencia, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, resultado_explotacion=resultado_explotacion, suma_resultado_neto=suma_resultado_neto, resultado_neto=resultado_neto, detalle_resultado_neto=detalle_resultado_neto)
 
 @app.route('/iva', methods=['GET', 'POST'])
 def resultado_iva():

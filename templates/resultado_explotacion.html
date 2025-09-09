@@ -216,6 +216,33 @@
             <div class="diferencia" style="font-size:1.2em; color:#1976d2; margin-top:15px; text-align:left; font-weight:bold;">
                 Resultado de la explotación: <span class="{% if resultado_explotacion is not none and resultado_explotacion < 0 %}negativo{% endif %}">{{ '%.2f'|format(resultado_explotacion) }} €</span>
             </div>
+            {% if detalle_resultado_neto is defined and detalle_resultado_neto|length > 0 %}
+            <div class="resumen">
+                <span>Detalle cuentas resultado neto:</span>
+            </div>
+            <table class="detalle-table">
+                <tr>
+                    <th>Código cuenta</th>
+                    <th>Nombre</th>
+                    <th>Importe</th>
+                    <th></th>
+                </tr>
+                {% for d in detalle_resultado_neto %}
+                <tr class="tooltip" data-transacciones='{{ d.transacciones|tojson }}'>
+                    <td>{{ d.cuenta }}</td>
+                    <td>{{ d.nombre }}</td>
+                    <td class="{% if d.importe < 0 %}negativo{% endif %}">{{ '%.2f'|format(d.importe) }} €</td>
+                    <td></td>
+                </tr>
+                {% endfor %}
+            </table>
+            <div class="diferencia" style="font-size:1.1em; color:#ff6f00; margin-top:10px; text-align:left; font-weight:bold;">
+                Total ajustes: <span class="{% if suma_resultado_neto < 0 %}negativo{% endif %}">{{ '%.2f'|format(suma_resultado_neto) }} €</span>
+            </div>
+            <div class="diferencia" style="font-size:1.3em; color:#2e7d32; margin-top:15px; text-align:left; font-weight:bold; border-top: 2px solid #2e7d32; padding-top: 10px;">
+                Resultado neto: <span class="{% if resultado_neto is not none and resultado_neto < 0 %}negativo{% endif %}">{{ '%.2f'|format(resultado_neto) }} €</span>
+            </div>
+            {% endif %}
         {% endif %}
     </div>
     <script>
