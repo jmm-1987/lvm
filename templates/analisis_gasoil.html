@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Análisis de Gasoil - LVM</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -89,68 +88,19 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 40px;
-        }
-        
-        .stat-card {
-            background: #f8f9fa;
-            border-radius: 12px;
-            padding: 25px;
-            text-align: center;
-            border: 1px solid #e9ecef;
-            transition: transform 0.3s ease;
-        }
-        
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
-        
-        .stat-card h4 {
-            margin: 0 0 15px 0;
-            color: #333;
-            font-size: 1.1em;
-        }
-        
-        .stat-card .value {
-            font-size: 2.5em;
-            font-weight: bold;
-            color: #667eea;
-            margin-bottom: 10px;
-        }
-        
-        .stat-card .unit {
-            color: #666;
-            font-size: 0.9em;
-        }
-        
-        .charts-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-            gap: 30px;
-            margin-bottom: 40px;
-        }
-        
         .chart-container {
             background: white;
             border-radius: 12px;
             padding: 25px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             border: 1px solid #e9ecef;
+            margin-bottom: 30px;
         }
         
         .chart-container h3 {
             margin: 0 0 20px 0;
             color: #333;
             text-align: center;
-        }
-        
-        .chart-wrapper {
-            position: relative;
-            height: 300px;
         }
         
         .actions {
@@ -193,6 +143,16 @@
         .btn-success:hover {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(86, 171, 47, 0.4);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(240, 147, 251, 0.4);
         }
         
         .btn-secondary {
@@ -258,6 +218,7 @@
             text-transform: uppercase;
             font-size: 0.9em;
             letter-spacing: 0.5px;
+            text-align: center;
         }
         
         tr:hover {
@@ -267,20 +228,33 @@
         .number {
             text-align: right;
             font-family: 'Courier New', monospace;
+            font-weight: 500;
+        }
+        
+        td:first-child {
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td:first-child small {
+            color: #666;
+            font-size: 0.85em;
+            font-weight: normal;
         }
         
         @media (max-width: 768px) {
-            .charts-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .chart-wrapper {
-                height: 250px;
-            }
-            
             .actions {
                 flex-direction: column;
                 align-items: stretch;
+            }
+            
+            .table-container {
+                overflow-x: auto;
+            }
+            
+            th, td {
+                padding: 10px 8px;
+                font-size: 0.9em;
             }
         }
     </style>
@@ -315,6 +289,31 @@
                         </select>
                     </div>
                     <div class="form-group">
+                        <label for="mes">Mes:</label>
+                        <select id="mes" name="mes">
+                            <option value="">Todos los meses</option>
+                            <option value="1" {% if mes_seleccionado == 1 %}selected{% endif %}>Enero</option>
+                            <option value="2" {% if mes_seleccionado == 2 %}selected{% endif %}>Febrero</option>
+                            <option value="3" {% if mes_seleccionado == 3 %}selected{% endif %}>Marzo</option>
+                            <option value="4" {% if mes_seleccionado == 4 %}selected{% endif %}>Abril</option>
+                            <option value="5" {% if mes_seleccionado == 5 %}selected{% endif %}>Mayo</option>
+                            <option value="6" {% if mes_seleccionado == 6 %}selected{% endif %}>Junio</option>
+                            <option value="7" {% if mes_seleccionado == 7 %}selected{% endif %}>Julio</option>
+                            <option value="8" {% if mes_seleccionado == 8 %}selected{% endif %}>Agosto</option>
+                            <option value="9" {% if mes_seleccionado == 9 %}selected{% endif %}>Septiembre</option>
+                            <option value="10" {% if mes_seleccionado == 10 %}selected{% endif %}>Octubre</option>
+                            <option value="11" {% if mes_seleccionado == 11 %}selected{% endif %}>Noviembre</option>
+                            <option value="12" {% if mes_seleccionado == 12 %}selected{% endif %}>Diciembre</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="acumulado">Vista:</label>
+                        <select id="acumulado" name="acumulado">
+                            <option value="false" {% if not acumulado %}selected{% endif %}>Por meses</option>
+                            <option value="true" {% if acumulado %}selected{% endif %}>Acumulado</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <button type="submit" class="btn btn-primary" style="width: 100%;">Aplicar Filtros</button>
                     </div>
                 </form>
@@ -329,132 +328,59 @@
                 <div>
                     <a href="{{ url_for('listar_vehiculos') }}" class="btn btn-primary">Ver Vehículos</a>
                     <a href="{{ url_for('nuevo_consumo') }}" class="btn btn-success">+ Nuevo Consumo</a>
+                    <button onclick="generarPDF()" class="btn btn-warning">📄 Imprimir PDF</button>
                 </div>
             </div>
             
-            {% if consumos %}
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h4>⛽ Total Litros</h4>
-                    <div class="value">{{ "%.1f"|format(total_litros) }}</div>
-                    <div class="unit">litros</div>
-                </div>
-                <div class="stat-card">
-                    <h4>💰 Total Gasto</h4>
-                    <div class="value">{{ "%.0f"|format(total_gasto) }}</div>
-                    <div class="unit">euros</div>
-                </div>
-                <div class="stat-card">
-                    <h4>💵 Total Facturación</h4>
-                    <div class="value">{{ "%.0f"|format(total_facturacion) }}</div>
-                    <div class="unit">euros</div>
-                </div>
-                <div class="stat-card">
-                    <h4>📊 Rentabilidad</h4>
-                    <div class="value" style="color: {{ '#4caf50' if rentabilidad >= 0 else '#f44336' }}">{{ "%.0f"|format(rentabilidad) }}</div>
-                    <div class="unit">euros</div>
-                </div>
-                <div class="stat-card">
-                    <h4>🛣️ Total Kilómetros</h4>
-                    <div class="value">{{ "%.0f"|format(total_kms) }}</div>
-                    <div class="unit">km</div>
-                </div>
-                <div class="stat-card">
-                    <h4>📈 Precio Promedio</h4>
-                    <div class="value">{{ "%.3f"|format(precio_promedio) }}</div>
-                    <div class="unit">€/litro</div>
-                </div>
-                <div class="stat-card">
-                    <h4>🚗 Consumo por Km</h4>
-                    <div class="value">{{ "%.2f"|format(consumo_por_km) }}</div>
-                    <div class="unit">L/100km</div>
-                </div>
-            </div>
-            
-            <div class="charts-grid">
-                <div class="chart-container">
-                    <h3>📊 Consumo Mensual (Litros)</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="litrosChart"></canvas>
-                    </div>
-                </div>
-                
-                <div class="chart-container">
-                    <h3>💰 Gasto Mensual (Euros)</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="gastoChart"></canvas>
-                    </div>
-                </div>
-                
-                <div class="chart-container">
-                    <h3>🛣️ Kilómetros Mensuales</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="kmsChart"></canvas>
-                    </div>
-                </div>
-                
-                <div class="chart-container">
-                    <h3>📈 Precio por Litro Mensual</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="precioChart"></canvas>
-                    </div>
-                </div>
-                
-                <div class="chart-container">
-                    <h3>💵 Facturación Mensual (€)</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="facturacionChart"></canvas>
-                    </div>
-                </div>
-                
-                <div class="chart-container">
-                    <h3>📊 Rentabilidad Mensual (€)</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="rentabilidadChart"></canvas>
-                    </div>
-                </div>
-            </div>
-            
+            {% if estadisticas_vehiculos %}
             <div class="chart-container">
-                <h3>📋 Resumen por Mes</h3>
+                <h3>
+                    {% if vehiculo_seleccionado and not acumulado %}
+                        📅 Análisis Mensual - {{ vehiculos|selectattr('id', 'equalto', vehiculo_seleccionado)|map(attribute='matricula')|first }} - Año {{ año_seleccionado }}
+                    {% elif vehiculo_seleccionado and acumulado %}
+                        🚗 Análisis Acumulado - {{ vehiculos|selectattr('id', 'equalto', vehiculo_seleccionado)|map(attribute='matricula')|first }} - Año {{ año_seleccionado }}
+                    {% else %}
+                        🚗 Análisis por Vehículo - Año {{ año_seleccionado }}{% if mes_seleccionado %} - {{ ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][mes_seleccionado-1] }}{% endif %}
+                    {% endif %}
+                </h3>
                 <div class="table-container">
                     <table>
                         <thead>
                             <tr>
-                                <th>Mes</th>
-                                <th>Litros</th>
-                                <th>Gasto (€)</th>
-                                <th>Facturación (€)</th>
-                                <th>Rentabilidad (€)</th>
-                                <th>Kilómetros</th>
-                                <th>Precio Promedio (€/L)</th>
+                                <th>{% if vehiculo_seleccionado and not acumulado %}Mes{% else %}Matrícula{% endif %}</th>
+                                <th>Km Recorridos</th>
+                                <th>Litros Totales</th>
+                                <th>Importe Total (€)</th>
+                                <th>Total Cobrado (€)</th>
+                                <th>Precio por Litro (€)</th>
                                 <th>Consumo (L/100km)</th>
+                                <th>Precio Cobrado por Km (€)</th>
+                                <th>Precio Pagado por Km (€)</th>
+                                <th>Variación (€)</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for mes, datos in datos_mensuales.items() %}
+                            {% for stats in estadisticas_vehiculos %}
                             <tr>
-                                <td>{{ ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][mes-1] }}</td>
-                                <td class="number">{{ "%.1f"|format(datos.litros) }}</td>
-                                <td class="number">{{ "%.2f"|format(datos.gasto) }}</td>
-                                <td class="number">
-                                    {% if datos.facturacion %}
-                                        {% if datos.facturacion is number %}
-                                            {{ "%.2f"|format(datos.facturacion) }}
-                                        {% else %}
-                                            {{ datos.facturacion }}
-                                        {% endif %}
+                                <td>
+                                    {% if vehiculo_seleccionado and not acumulado %}
+                                        <strong>{{ ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][stats.mes-1] }}</strong>
                                     {% else %}
-                                        0.00
+                                        <strong>{{ stats.vehiculo.matricula }}</strong><br>
+                                        <small>{{ stats.vehiculo.marca }} {{ stats.vehiculo.modelo }}</small>
                                     {% endif %}
                                 </td>
-                                <td class="number" style="color: {{ '#4caf50' if (datos.facturacion|float - datos.gasto) >= 0 else '#f44336' }}">
-                                    {% set facturacion_num = datos.facturacion|float if datos.facturacion else 0 %}
-                                    {{ "%.2f"|format(facturacion_num - datos.gasto) }}
+                                <td class="number">{{ "%.0f"|format(stats.total_kms) }}</td>
+                                <td class="number">{{ "%.1f"|format(stats.total_litros) }}</td>
+                                <td class="number">{{ "%.2f"|format(stats.total_gasto) }}</td>
+                                <td class="number">{{ "%.2f"|format(stats.total_facturacion) }}</td>
+                                <td class="number">{{ "%.3f"|format(stats.precio_por_litro) }}</td>
+                                <td class="number">{{ "%.2f"|format(stats.consumo_por_100km) }}</td>
+                                <td class="number">{{ "%.3f"|format(stats.precio_cobrado_por_km) }}</td>
+                                <td class="number">{{ "%.3f"|format(stats.precio_pagado_por_km) }}</td>
+                                <td class="number" style="color: {{ '#4caf50' if stats.variacion_precio >= 0 else '#f44336' }}">
+                                    {{ "%.3f"|format(stats.variacion_precio) }}
                                 </td>
-                                <td class="number">{{ "%.0f"|format(datos.kms) }}</td>
-                                <td class="number">{{ "%.3f"|format(datos.gasto / datos.litros if datos.litros > 0 else 0) }}</td>
-                                <td class="number">{{ "%.2f"|format((datos.litros / datos.kms * 100) if datos.kms > 0 else 0) }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -465,145 +391,91 @@
             {% else %}
             <div class="empty-state">
                 <h3>📊 No hay datos para analizar</h3>
-                <p>{% if vehiculo_seleccionado %}No se encontraron consumos para el vehículo seleccionado en el año {{ año_seleccionado }}.{% else %}No se encontraron consumos para el año {{ año_seleccionado }}.{% endif %}</p>
+                <p>
+                    No se encontraron consumos para 
+                    {% if vehiculo_seleccionado %}
+                        el vehículo {{ vehiculos|selectattr('id', 'equalto', vehiculo_seleccionado)|map(attribute='matricula')|first }}
+                    {% endif %}
+                    {% if mes_seleccionado %}
+                        en {{ ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][mes_seleccionado-1] }}
+                    {% endif %}
+                    del año {{ año_seleccionado }}.
+                </p>
                 <a href="{{ url_for('nuevo_consumo') }}" class="btn btn-success">Registrar Primer Consumo</a>
             </div>
             {% endif %}
         </div>
     </div>
     
-    {% if consumos %}
     <script>
-        // Preparar datos para los gráficos
-        const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-        const datosMensuales = {{ datos_mensuales | tojson }};
-        
-        // Crear arrays de datos para cada gráfico
-        const litrosData = [];
-        const gastoData = [];
-        const kmsData = [];
-        const precioData = [];
-        const facturacionData = [];
-        const rentabilidadData = [];
-        
-        for (let i = 1; i <= 12; i++) {
-            const datos = datosMensuales[i] || { litros: 0, gasto: 0, kms: 0, facturacion: 0 };
-            litrosData.push(datos.litros);
-            gastoData.push(datos.gasto);
-            kmsData.push(datos.kms);
-            precioData.push(datos.kms > 0 ? (datos.gasto / datos.litros) : 0);
-            facturacionData.push(datos.facturacion);
-            rentabilidadData.push(datos.facturacion - datos.gasto);
-        }
-        
-        // Configuración común para los gráficos
-        const chartOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
+        // Función para manejar el cambio de vehículo
+        document.getElementById('vehiculo_id').addEventListener('change', function() {
+            const vehiculoSeleccionado = this.value;
+            const mesSelect = document.getElementById('mes');
+            const acumuladoSelect = document.getElementById('acumulado');
+            
+            if (vehiculoSeleccionado) {
+                // Si hay vehículo seleccionado, deshabilitar mes y habilitar acumulado
+                mesSelect.disabled = true;
+                mesSelect.value = '';
+                acumuladoSelect.disabled = false;
+            } else {
+                // Si no hay vehículo seleccionado, habilitar mes y deshabilitar acumulado
+                mesSelect.disabled = false;
+                acumuladoSelect.disabled = true;
+                acumuladoSelect.value = 'false';
             }
-        };
-        
-        // Gráfico de litros
-        new Chart(document.getElementById('litrosChart'), {
-            type: 'bar',
-            data: {
-                labels: meses,
-                datasets: [{
-                    data: litrosData,
-                    backgroundColor: 'rgba(102, 126, 234, 0.8)',
-                    borderColor: 'rgba(102, 126, 234, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: chartOptions
         });
         
-        // Gráfico de gasto
-        new Chart(document.getElementById('gastoChart'), {
-            type: 'bar',
-            data: {
-                labels: meses,
-                datasets: [{
-                    data: gastoData,
-                    backgroundColor: 'rgba(86, 171, 47, 0.8)',
-                    borderColor: 'rgba(86, 171, 47, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: chartOptions
+        // Función para manejar el cambio de vista acumulado
+        document.getElementById('acumulado').addEventListener('change', function() {
+            const esAcumulado = this.value === 'true';
+            const mesSelect = document.getElementById('mes');
+            
+            if (esAcumulado) {
+                mesSelect.disabled = true;
+                mesSelect.value = '';
+            } else {
+                mesSelect.disabled = false;
+            }
         });
         
-        // Gráfico de kilómetros
-        new Chart(document.getElementById('kmsChart'), {
-            type: 'line',
-            data: {
-                labels: meses,
-                datasets: [{
-                    data: kmsData,
-                    backgroundColor: 'rgba(52, 152, 219, 0.2)',
-                    borderColor: 'rgba(52, 152, 219, 1)',
-                    borderWidth: 2,
-                    fill: true
-                }]
-            },
-            options: chartOptions
+        // Inicializar estado al cargar la página
+        document.addEventListener('DOMContentLoaded', function() {
+            const vehiculoSeleccionado = document.getElementById('vehiculo_id').value;
+            const esAcumulado = document.getElementById('acumulado').value === 'true';
+            
+            if (vehiculoSeleccionado) {
+                document.getElementById('mes').disabled = true;
+                document.getElementById('acumulado').disabled = false;
+            } else {
+                document.getElementById('mes').disabled = false;
+                document.getElementById('acumulado').disabled = true;
+            }
         });
         
-        // Gráfico de precio
-        new Chart(document.getElementById('precioChart'), {
-            type: 'line',
-            data: {
-                labels: meses,
-                datasets: [{
-                    data: precioData,
-                    backgroundColor: 'rgba(243, 156, 18, 0.2)',
-                    borderColor: 'rgba(243, 156, 18, 1)',
-                    borderWidth: 2,
-                    fill: true
-                }]
-            },
-            options: chartOptions
-        });
-        
-        // Gráfico de facturación
-        new Chart(document.getElementById('facturacionChart'), {
-            type: 'bar',
-            data: {
-                labels: meses,
-                datasets: [{
-                    data: facturacionData,
-                    backgroundColor: 'rgba(46, 204, 113, 0.8)',
-                    borderColor: 'rgba(46, 204, 113, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: chartOptions
-        });
-        
-        // Gráfico de rentabilidad
-        new Chart(document.getElementById('rentabilidadChart'), {
-            type: 'bar',
-            data: {
-                labels: meses,
-                datasets: [{
-                    data: rentabilidadData,
-                    backgroundColor: rentabilidadData.map(val => val >= 0 ? 'rgba(46, 204, 113, 0.8)' : 'rgba(231, 76, 60, 0.8)'),
-                    borderColor: rentabilidadData.map(val => val >= 0 ? 'rgba(46, 204, 113, 1)' : 'rgba(231, 76, 60, 1)'),
-                    borderWidth: 1
-                }]
-            },
-            options: chartOptions
-        });
+        // Función para generar PDF
+        function generarPDF() {
+            const año = document.getElementById('año').value;
+            const vehiculoId = document.getElementById('vehiculo_id').value;
+            const mes = document.getElementById('mes').value;
+            const acumulado = document.getElementById('acumulado').value;
+            
+            // Construir URL con parámetros
+            let url = `/control_gasoil/analisis/pdf?año=${año}`;
+            if (vehiculoId) {
+                url += `&vehiculo_id=${vehiculoId}`;
+            }
+            if (mes) {
+                url += `&mes=${mes}`;
+            }
+            if (acumulado === 'true') {
+                url += `&acumulado=true`;
+            }
+            
+            // Abrir PDF en nueva ventana
+            window.open(url, '_blank');
+        }
     </script>
-    {% endif %}
 </body>
 </html>

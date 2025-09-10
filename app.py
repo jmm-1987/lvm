@@ -14,6 +14,11 @@ import paramiko
 import re
 import PyPDF2
 from openpyxl import Workbook
+from reportlab.lib.pagesizes import A4, letter, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
 
 app = Flask(__name__)
 app.secret_key = 'pon_aqui_una_clave_secreta_larga_y_unica'
@@ -428,6 +433,9 @@ def resultado_explotacion():
     fecha_inicio = inicio_trimestre.strftime('%Y-%m-%d')
     fecha_fin = hoy.strftime('%Y-%m-%d')
     resultado_explotacion = None
+    suma_resultado_neto = 0
+    resultado_neto = 0
+    detalle_resultado_neto = []
     if request.method == 'POST':
         fecha_inicio = request.form['fecha_inicio']
         fecha_fin = request.form['fecha_fin']
@@ -2008,63 +2016,500 @@ def borrar_consumo(id):
     return redirect(url_for('listar_consumos'))
 
 # Análisis y estadísticas
+@app.route('/cuentas_resumen', methods=['GET', 'POST'])
+@login_required
+def cuentas_resumen():
+    """Página de resumen de todas las cuentas con importes"""
+    # Calcular fechas por defecto - año completo
+    hoy = datetime.today()
+    fecha_inicio = datetime(hoy.year, 1, 1).strftime('%Y-%m-%d')
+    fecha_fin = hoy.strftime('%Y-%m-%d')
+    tipo_cuenta = 'contrapartida'  # Por defecto mostrar solo contrapartidas
+    
+    resumen_cuentas = []
+    
+    if request.method == 'POST':
+        fecha_inicio = request.form['fecha_inicio']
+        fecha_fin = request.form['fecha_fin']
+        tipo_cuenta = request.form.get('tipo_cuenta', 'todas')
+    
+    # Convertir fechas para filtro
+    fecha_inicio_dt, fecha_fin_dt = convertir_fechas_para_filtro(fecha_inicio, fecha_fin)
+    
+    # Obtener todos los conceptos en el rango de fechas
+    # Incluir tanto las cuentas principales como las contrapartidas
+    from sqlalchemy.orm import aliased
+    
+    CuentaPrincipal = aliased(Cuenta)
+    CuentaContrapartida = aliased(Cuenta)
+    
+    conceptos = db.session.query(MovimientoConcepto, Movimiento, CuentaPrincipal, CuentaContrapartida)\
+        .join(Movimiento)\
+        .join(CuentaPrincipal, MovimientoConcepto.cuenta_id == CuentaPrincipal.id)\
+        .outerjoin(CuentaContrapartida, MovimientoConcepto.contrapartida_id == CuentaContrapartida.id)\
+        .all()
+    
+    # Filtrar por fecha
+    conceptos_filtrados = []
+    for c in conceptos:
+        fecha_movimiento = parsear_fecha_robusto(c.Movimiento.fecha_factura)
+        if fecha_movimiento and fecha_inicio_dt <= fecha_movimiento <= fecha_fin_dt:
+            conceptos_filtrados.append(c)
+    
+    # Agrupar por cuenta (tanto principales como contrapartidas)
+    cuentas_dict = {}
+    
+    for c in conceptos_filtrados:
+        # Procesar cuenta principal
+        cuenta_principal = c[2]  # CuentaPrincipal
+        cuenta_contrapartida = c[3]  # CuentaContrapartida (puede ser None)
+        
+        # Procesar cuenta principal solo si no estamos filtrando por contrapartida
+        if cuenta_principal and tipo_cuenta != 'contrapartida':
+            cuenta_id = cuenta_principal.id
+            cuenta_numero = cuenta_principal.cuenta
+            cuenta_nombre = cuenta_principal.nombre
+            cuenta_tipo = cuenta_principal.tipo
+            
+            # Filtrar por tipo de cuenta si se especifica
+            if tipo_cuenta != 'todas':
+                if tipo_cuenta == 'normal' and cuenta_tipo != 'normal':
+                    continue
+                elif tipo_cuenta == 'contrapartida' and cuenta_tipo != 'contrapartida':
+                    continue
+            
+            if cuenta_id not in cuentas_dict:
+                cuentas_dict[cuenta_id] = {
+                    'cuenta': cuenta_numero,
+                    'nombre': cuenta_nombre,
+                    'tipo': cuenta_tipo,
+                    'importe_total': 0,
+                    'num_movimientos': 0,
+                    'movimientos': []
+                }
+            
+            cuentas_dict[cuenta_id]['importe_total'] += c[0].importe
+            cuentas_dict[cuenta_id]['num_movimientos'] += 1
+            
+            # Agregar detalle del movimiento
+            movimiento_info = {
+                'fecha': c[1].fecha_factura,
+                'num_factura': c[1].num_factura,
+                'tipo': c[1].tipo,
+                'importe': c[0].importe,
+                'concepto': c[0].concepto or '',
+                'contrapartida': f"{cuenta_contrapartida.cuenta} - {cuenta_contrapartida.nombre}" if cuenta_contrapartida else "Sin contrapartida"
+            }
+            cuentas_dict[cuenta_id]['movimientos'].append(movimiento_info)
+        
+        # Procesar cuenta contrapartida solo si estamos filtrando por contrapartida o todas
+        if cuenta_contrapartida and tipo_cuenta in ['contrapartida', 'todas']:
+            cuenta_id = cuenta_contrapartida.id
+            cuenta_numero = cuenta_contrapartida.cuenta
+            cuenta_nombre = cuenta_contrapartida.nombre
+            cuenta_tipo = cuenta_contrapartida.tipo
+            
+            # Filtrar por tipo de cuenta si se especifica
+            if tipo_cuenta != 'todas':
+                if tipo_cuenta == 'normal' and cuenta_tipo != 'normal':
+                    continue
+                elif tipo_cuenta == 'contrapartida' and cuenta_tipo != 'contrapartida':
+                    continue
+            
+            if cuenta_id not in cuentas_dict:
+                cuentas_dict[cuenta_id] = {
+                    'cuenta': cuenta_numero,
+                    'nombre': cuenta_nombre,
+                    'tipo': cuenta_tipo,
+                    'importe_total': 0,
+                    'num_movimientos': 0,
+                    'movimientos': []
+                }
+            
+            cuentas_dict[cuenta_id]['importe_total'] += c[0].importe
+            cuentas_dict[cuenta_id]['num_movimientos'] += 1
+            
+            # Agregar detalle del movimiento
+            movimiento_info = {
+                'fecha': c[1].fecha_factura,
+                'num_factura': c[1].num_factura,
+                'tipo': c[1].tipo,
+                'importe': c[0].importe,
+                'concepto': c[0].concepto or '',
+                'contrapartida': f"{cuenta_principal.cuenta} - {cuenta_principal.nombre}" if cuenta_principal else "Sin contrapartida"
+            }
+            cuentas_dict[cuenta_id]['movimientos'].append(movimiento_info)
+    
+    # Convertir a lista y ordenar por número de cuenta
+    resumen_cuentas = list(cuentas_dict.values())
+    resumen_cuentas.sort(key=lambda x: x['cuenta'])
+    
+    # Ordenar movimientos por fecha dentro de cada cuenta
+    for cuenta in resumen_cuentas:
+        cuenta['movimientos'].sort(key=lambda x: x['fecha'], reverse=True)
+    
+    return render_template('cuentas_resumen.html', 
+                         resumen_cuentas=resumen_cuentas,
+                         fecha_inicio=fecha_inicio,
+                         fecha_fin=fecha_fin,
+                         tipo_cuenta=tipo_cuenta)
+
 @app.route('/control_gasoil/analisis')
 @login_required
 def analisis_gasoil():
     """Página de análisis y estadísticas"""
     vehiculo_id = request.args.get('vehiculo_id', type=int)
     año = request.args.get('año', type=int) or datetime.now().year
+    mes = request.args.get('mes', type=int)
+    acumulado = request.args.get('acumulado', type=str) == 'true'
     
-    # Obtener datos para análisis
-    query = ConsumoGasoil.query.join(Vehiculo)
-    if vehiculo_id:
-        query = query.filter(ConsumoGasoil.vehiculo_id == vehiculo_id)
-    
-    # Filtrar por año
-    query = query.filter(db.func.strftime('%Y', ConsumoGasoil.fecha) == str(año))
-    
-    consumos = query.order_by(ConsumoGasoil.fecha).all()
+    # Obtener todos los vehículos activos
     vehiculos = Vehiculo.query.filter_by(activo=True).all()
     
-    # Calcular estadísticas
-    if consumos:
-        total_litros = sum(c.litros for c in consumos)
-        total_gasto = sum(c.total for c in consumos)
-        total_kms = sum(c.kms for c in consumos)
-        total_facturacion = sum(float(c.facturacion) if c.facturacion and str(c.facturacion).replace('.', '').replace('-', '').isdigit() else 0 for c in consumos)
-        precio_promedio = total_gasto / total_litros if total_litros > 0 else 0
-        consumo_por_km = total_litros / total_kms if total_kms > 0 else 0
-        rentabilidad = total_facturacion - total_gasto if total_facturacion else 0
-        
-        # Datos por mes
-        datos_mensuales = {}
-        for consumo in consumos:
-            mes = datetime.strptime(consumo.fecha, '%Y-%m-%d').month
-            if mes not in datos_mensuales:
-                datos_mensuales[mes] = {'litros': 0, 'gasto': 0, 'kms': 0, 'facturacion': 0}
-            datos_mensuales[mes]['litros'] += consumo.litros
-            datos_mensuales[mes]['gasto'] += consumo.total
-            datos_mensuales[mes]['kms'] += consumo.kms
-            if consumo.facturacion:
-                facturacion_val = float(consumo.facturacion) if str(consumo.facturacion).replace('.', '').replace('-', '').isdigit() else 0
-                datos_mensuales[mes]['facturacion'] += facturacion_val
+    # Calcular estadísticas por vehículo
+    estadisticas_vehiculos = []
+    
+    # Si hay un vehículo seleccionado y no es acumulado, mostrar por meses
+    if vehiculo_id and not acumulado:
+        # Obtener todos los meses con datos para el vehículo seleccionado
+        vehiculo = Vehiculo.query.get(vehiculo_id)
+        if vehiculo:
+            # Obtener todos los consumos del vehículo para el año
+            consumos_vehiculo = ConsumoGasoil.query.filter(
+                ConsumoGasoil.vehiculo_id == vehiculo_id,
+                db.func.strftime('%Y', ConsumoGasoil.fecha) == str(año)
+            ).all()
+            
+            # Agrupar por mes
+            consumos_por_mes = {}
+            for consumo in consumos_vehiculo:
+                mes_consumo = datetime.strptime(consumo.fecha, '%Y-%m-%d').month
+                if mes_consumo not in consumos_por_mes:
+                    consumos_por_mes[mes_consumo] = []
+                consumos_por_mes[mes_consumo].append(consumo)
+            
+            # Procesar cada mes
+            for mes_num, consumos_mes in consumos_por_mes.items():
+                if consumos_mes:
+                    # Calcular estadísticas del mes
+                    total_litros = sum(c.litros for c in consumos_mes)
+                    total_gasto = sum(c.total for c in consumos_mes)
+                    total_kms = sum(c.kms for c in consumos_mes)
+                    total_facturacion = sum(float(c.facturacion) if c.facturacion and str(c.facturacion).replace('.', '').replace('-', '').isdigit() else 0 for c in consumos_mes)
+                    
+                    # Calcular precios y variaciones
+                    precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
+                    consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
+                    precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
+                    precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
+                    variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
+                    
+                    estadisticas_vehiculos.append({
+                        'vehiculo': vehiculo,
+                        'mes': mes_num,
+                        'total_litros': total_litros,
+                        'total_gasto': total_gasto,
+                        'total_kms': total_kms,
+                        'total_facturacion': total_facturacion,
+                        'precio_por_litro': precio_por_litro,
+                        'consumo_por_100km': consumo_por_100km,
+                        'precio_cobrado_por_km': precio_cobrado_por_km,
+                        'precio_pagado_por_km': precio_pagado_por_km,
+                        'variacion_precio': variacion_precio
+                    })
+            
+            # Ordenar por mes
+            estadisticas_vehiculos.sort(key=lambda x: x['mes'])
     else:
-        total_litros = total_gasto = total_kms = total_facturacion = precio_promedio = consumo_por_km = rentabilidad = 0
-        datos_mensuales = {}
+        # Lógica original para todos los vehículos o vehículo específico con acumulado
+        for vehiculo in vehiculos:
+            # Construir query base para el vehículo y año
+            query = ConsumoGasoil.query.filter(
+                ConsumoGasoil.vehiculo_id == vehiculo.id,
+                db.func.strftime('%Y', ConsumoGasoil.fecha) == str(año)
+            )
+            
+            # Si hay filtro por vehículo específico, solo procesar ese vehículo
+            if vehiculo_id and vehiculo.id != vehiculo_id:
+                continue
+                
+            # Si hay filtro por mes, aplicarlo
+            if mes:
+                query = query.filter(db.func.strftime('%m', ConsumoGasoil.fecha) == f"{mes:02d}")
+            
+            consumos_vehiculo = query.all()
+            
+            if consumos_vehiculo:
+                # Calcular estadísticas del vehículo
+                total_litros = sum(c.litros for c in consumos_vehiculo)
+                total_gasto = sum(c.total for c in consumos_vehiculo)
+                total_kms = sum(c.kms for c in consumos_vehiculo)
+                total_facturacion = sum(float(c.facturacion) if c.facturacion and str(c.facturacion).replace('.', '').replace('-', '').isdigit() else 0 for c in consumos_vehiculo)
+                
+                # Calcular precios y variaciones
+                precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
+                consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
+                precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
+                precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
+                variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
+                
+                estadisticas_vehiculos.append({
+                    'vehiculo': vehiculo,
+                    'mes': None,
+                    'total_litros': total_litros,
+                    'total_gasto': total_gasto,
+                    'total_kms': total_kms,
+                    'total_facturacion': total_facturacion,
+                    'precio_por_litro': precio_por_litro,
+                    'consumo_por_100km': consumo_por_100km,
+                    'precio_cobrado_por_km': precio_cobrado_por_km,
+                    'precio_pagado_por_km': precio_pagado_por_km,
+                    'variacion_precio': variacion_precio
+                })
+        
+        # Ordenar por consumo por 100km (de menor a mayor - más eficiente primero)
+        estadisticas_vehiculos.sort(key=lambda x: x['consumo_por_100km'])
     
     return render_template('analisis_gasoil.html', 
-                         consumos=consumos,
+                         estadisticas_vehiculos=estadisticas_vehiculos,
                          vehiculos=vehiculos,
                          vehiculo_seleccionado=vehiculo_id,
                          año_seleccionado=año,
-                         total_litros=total_litros,
-                         total_gasto=total_gasto,
-                         total_kms=total_kms,
-                         total_facturacion=total_facturacion,
-                         precio_promedio=precio_promedio,
-                         consumo_por_km=consumo_por_km,
-                         rentabilidad=rentabilidad,
-                         datos_mensuales=datos_mensuales)
+                         mes_seleccionado=mes,
+                         acumulado=acumulado)
+
+@app.route('/control_gasoil/analisis/pdf')
+@login_required
+def analisis_gasoil_pdf():
+    """Generar PDF del análisis de gasoil"""
+    # Obtener los mismos parámetros que la función principal
+    año = request.args.get('año', datetime.now().year, type=int)
+    vehiculo_id = request.args.get('vehiculo_id', type=int)
+    mes = request.args.get('mes', type=int)
+    acumulado = request.args.get('acumulado', 'false').lower() == 'true'
+    
+    # Obtener vehículos activos
+    vehiculos = Vehiculo.query.filter_by(activo=True).all()
+    
+    # Calcular estadísticas (reutilizar lógica de la función principal)
+    estadisticas_vehiculos = []
+    
+    if vehiculo_id and not acumulado:
+        # Mostrar meses del vehículo específico
+        vehiculo = Vehiculo.query.get(vehiculo_id)
+        if vehiculo:
+            consumos = ConsumoGasoil.query.filter(
+                ConsumoGasoil.vehiculo_id == vehiculo.id,
+                db.func.strftime('%Y', ConsumoGasoil.fecha) == str(año)
+            ).all()
+            
+            # Agrupar por mes
+            consumos_por_mes = {}
+            for consumo in consumos:
+                mes_consumo = consumo.fecha.month
+                if mes_consumo not in consumos_por_mes:
+                    consumos_por_mes[mes_consumo] = []
+                consumos_por_mes[mes_consumo].append(consumo)
+            
+            # Procesar cada mes
+            for mes_num, consumos_mes in consumos_por_mes.items():
+                if consumos_mes:
+                    # Calcular estadísticas del mes
+                    total_litros = sum(c.litros for c in consumos_mes)
+                    total_gasto = sum(c.total for c in consumos_mes)
+                    total_kms = sum(c.kms for c in consumos_mes)
+                    total_facturacion = sum(float(c.facturacion) if c.facturacion and str(c.facturacion).replace('.', '').replace('-', '').isdigit() else 0 for c in consumos_mes)
+                    
+                    # Calcular precios y variaciones
+                    precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
+                    consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
+                    precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
+                    precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
+                    variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
+                    
+                    estadisticas_vehiculos.append({
+                        'vehiculo': vehiculo,
+                        'mes': mes_num,
+                        'total_litros': total_litros,
+                        'total_gasto': total_gasto,
+                        'total_kms': total_kms,
+                        'total_facturacion': total_facturacion,
+                        'precio_por_litro': precio_por_litro,
+                        'consumo_por_100km': consumo_por_100km,
+                        'precio_cobrado_por_km': precio_cobrado_por_km,
+                        'precio_pagado_por_km': precio_pagado_por_km,
+                        'variacion_precio': variacion_precio
+                    })
+            
+            # Ordenar por mes
+            estadisticas_vehiculos.sort(key=lambda x: x['mes'])
+    else:
+        # Lógica para todos los vehículos o vehículo específico con acumulado
+        for vehiculo in vehiculos:
+            # Construir query base para el vehículo y año
+            query = ConsumoGasoil.query.filter(
+                ConsumoGasoil.vehiculo_id == vehiculo.id,
+                db.func.strftime('%Y', ConsumoGasoil.fecha) == str(año)
+            )
+            
+            # Si hay filtro por vehículo específico, solo procesar ese vehículo
+            if vehiculo_id and vehiculo.id != vehiculo_id:
+                continue
+                
+            # Si hay filtro por mes, aplicarlo
+            if mes:
+                query = query.filter(db.func.strftime('%m', ConsumoGasoil.fecha) == f"{mes:02d}")
+            
+            consumos = query.all()
+            
+            if consumos:
+                # Calcular estadísticas
+                total_litros = sum(c.litros for c in consumos)
+                total_gasto = sum(c.total for c in consumos)
+                total_kms = sum(c.kms for c in consumos)
+                total_facturacion = sum(float(c.facturacion) if c.facturacion and str(c.facturacion).replace('.', '').replace('-', '').isdigit() else 0 for c in consumos)
+                
+                # Calcular precios y variaciones
+                precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
+                consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
+                precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
+                precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
+                variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
+                
+                estadisticas_vehiculos.append({
+                    'vehiculo': vehiculo,
+                    'total_litros': total_litros,
+                    'total_gasto': total_gasto,
+                    'total_kms': total_kms,
+                    'total_facturacion': total_facturacion,
+                    'precio_por_litro': precio_por_litro,
+                    'consumo_por_100km': consumo_por_100km,
+                    'precio_cobrado_por_km': precio_cobrado_por_km,
+                    'precio_pagado_por_km': precio_pagado_por_km,
+                    'variacion_precio': variacion_precio
+                })
+        
+        # Ordenar por consumo por 100km (de menor a mayor - más eficiente primero)
+        estadisticas_vehiculos.sort(key=lambda x: x['consumo_por_100km'])
+    
+    # Crear el PDF en formato horizontal
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=50, leftMargin=50, topMargin=50, bottomMargin=50)
+    
+    # Estilos
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        spaceAfter=30,
+        alignment=1  # Centrado
+    )
+    
+    # Contenido del PDF
+    story = []
+    
+    # Título
+    titulo = f"Análisis de Consumos de Gasoil - {año}"
+    if vehiculo_id and not acumulado:
+        vehiculo = Vehiculo.query.get(vehiculo_id)
+        titulo += f" - {vehiculo.matricula}"
+    elif vehiculo_id and acumulado:
+        vehiculo = Vehiculo.query.get(vehiculo_id)
+        titulo += f" - {vehiculo.matricula} (Acumulado)"
+    elif mes:
+        meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+        titulo += f" - {meses[mes-1]}"
+    
+    story.append(Paragraph(titulo, title_style))
+    story.append(Spacer(1, 12))
+    
+    # Crear tabla
+    if estadisticas_vehiculos:
+        # Encabezados de la tabla en dos filas
+        headers = []
+        if vehiculo_id and not acumulado:
+            headers = ['Mes', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 'Total\nCobrado (€)', 
+                      'Precio por\nLitro (€)', 'Consumo\n(L/100km)', 'Precio Cobrado\npor Km (€)', 
+                      'Precio Pagado\npor Km (€)', 'Variación\n(€)']
+        else:
+            headers = ['Matrícula', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 'Total\nCobrado (€)', 
+                      'Precio por\nLitro (€)', 'Consumo\n(L/100km)', 'Precio Cobrado\npor Km (€)', 
+                      'Precio Pagado\npor Km (€)', 'Variación\n(€)']
+        
+        # Datos de la tabla
+        data = [headers]
+        
+        for stats in estadisticas_vehiculos:
+            row = []
+            if vehiculo_id and not acumulado:
+                meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+                row.append(meses[stats['mes']-1])
+            else:
+                row.append(f"{stats['vehiculo'].matricula}\n{stats['vehiculo'].marca} {stats['vehiculo'].modelo}")
+            
+            row.extend([
+                f"{stats['total_kms']:.0f}",
+                f"{stats['total_litros']:.2f}",
+                f"{stats['total_gasto']:.2f}",
+                f"{stats['total_facturacion']:.2f}",
+                f"{stats['precio_por_litro']:.3f}",
+                f"{stats['consumo_por_100km']:.2f}",
+                f"{stats['precio_cobrado_por_km']:.3f}",
+                f"{stats['precio_pagado_por_km']:.3f}",
+                f"{stats['variacion_precio']:.3f}"
+            ])
+            data.append(row)
+        
+        # Crear tabla con anchos optimizados para formato horizontal
+        table = Table(data, colWidths=[1.5*inch, 1.0*inch, 1.0*inch, 1.0*inch, 1.0*inch, 
+                                      1.0*inch, 1.0*inch, 1.0*inch, 1.0*inch, 1.0*inch])
+        
+        # Estilo de la tabla optimizado para formato horizontal con encabezados de dos líneas
+        table_style = TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 20),
+            ('TOPPADDING', (0, 0), (-1, 0), 15),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        ])
+        
+        table.setStyle(table_style)
+        story.append(table)
+    else:
+        story.append(Paragraph("No hay datos disponibles para los filtros seleccionados.", styles['Normal']))
+    
+    # Generar PDF
+    doc.build(story)
+    buffer.seek(0)
+    
+    # Preparar respuesta
+    filename = f"analisis_gasoil_{año}"
+    if vehiculo_id:
+        vehiculo = Vehiculo.query.get(vehiculo_id)
+        filename += f"_{vehiculo.matricula}"
+    if mes:
+        filename += f"_mes_{mes:02d}"
+    if acumulado:
+        filename += "_acumulado"
+    filename += ".pdf"
+    
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=filename,
+        mimetype='application/pdf'
+    )
 
 # Función para migrar datos existentes de facturación de string a float
 def migrar_facturacion():

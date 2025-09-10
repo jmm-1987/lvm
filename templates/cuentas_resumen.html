@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resumen de Cuentas - LVM</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .filters {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .filters h3 {
+            margin: 0 0 20px 0;
+            color: #333;
+            font-size: 1.2em;
+        }
+        
+        .filter-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            align-items: end;
+        }
+        
+        .form-group {
+            margin-bottom: 0;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 0.9em;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+        }
+        
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(86, 171, 47, 0.4);
+        }
+        
+        .cuenta-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid #e9ecef;
+            transition: transform 0.3s ease;
+        }
+        
+        .cuenta-card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .cuenta-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f8f9fa;
+        }
+        
+        .cuenta-info h3 {
+            margin: 0 0 5px 0;
+            color: #333;
+            font-size: 1.3em;
+        }
+        
+        .cuenta-info .cuenta-numero {
+            color: #667eea;
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+        
+        .cuenta-info .cuenta-nombre {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .cuenta-stats {
+            text-align: right;
+        }
+        
+        .importe-total {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .num-movimientos {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .movimientos-container {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .movimiento-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .movimiento-info {
+            flex: 1;
+        }
+        
+        .movimiento-fecha {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .movimiento-concepto {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 2px;
+        }
+        
+        .movimiento-importe {
+            font-weight: bold;
+            color: #333;
+            text-align: right;
+        }
+        
+        .tipo-gasto {
+            color: #dc3545;
+        }
+        
+        .tipo-ingreso {
+            color: #28a745;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        
+        .empty-state h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+        
+        .empty-state p {
+            margin: 0 0 25px 0;
+            font-size: 1.1em;
+        }
+        
+        .summary-stats {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        @media (max-width: 768px) {
+            .cuenta-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 15px;
+            }
+            
+            .cuenta-stats {
+                text-align: left;
+            }
+            
+            .movimiento-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .movimiento-importe {
+                text-align: left;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Resumen de Cuentas</h1>
+        </div>
+        
+        <div class="content">
+            <div class="filters">
+                <h3>🔍 Filtros de Búsqueda</h3>
+                <form method="POST" class="filter-row">
+                    <div class="form-group">
+                        <label for="fecha_inicio">Fecha Inicio:</label>
+                        <input type="date" id="fecha_inicio" name="fecha_inicio" value="{{ fecha_inicio }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="fecha_fin">Fecha Fin:</label>
+                        <input type="date" id="fecha_fin" name="fecha_fin" value="{{ fecha_fin }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="tipo_cuenta">Tipo de Cuenta:</label>
+                        <select id="tipo_cuenta" name="tipo_cuenta">
+                            <option value="todas" {% if tipo_cuenta == 'todas' %}selected{% endif %}>Todas las cuentas</option>
+                            <option value="normal" {% if tipo_cuenta == 'normal' %}selected{% endif %}>Solo cuentas normales</option>
+                            <option value="contrapartida" {% if tipo_cuenta == 'contrapartida' %}selected{% endif %}>Solo contrapartidas</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">Aplicar Filtros</button>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="actions">
+                <div>
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary">🏠 Inicio</a>
+                    <a href="{{ url_for('listar_cuentas') }}" class="btn btn-secondary">Ver Cuentas</a>
+                </div>
+                <div>
+                    <a href="{{ url_for('listar_movimientos') }}" class="btn btn-success">Ver Movimientos</a>
+                </div>
+            </div>
+            
+            {% if resumen_cuentas %}
+            <div class="summary-stats">
+                <div class="stat-item">
+                    <div class="stat-value">{{ resumen_cuentas|length }}</div>
+                    <div class="stat-label">
+                        {% if tipo_cuenta == 'normal' %}
+                            Cuentas Normales
+                        {% elif tipo_cuenta == 'contrapartida' %}
+                            Contrapartidas
+                        {% else %}
+                            Cuentas con Movimientos
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ "%.2f"|format(resumen_cuentas|sum(attribute='importe_total')) }}</div>
+                    <div class="stat-label">Importe Total (€)</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ resumen_cuentas|sum(attribute='num_movimientos') }}</div>
+                    <div class="stat-label">Total Movimientos</div>
+                </div>
+                {% if tipo_cuenta == 'todas' %}
+                <div class="stat-item">
+                    <div class="stat-value">{{ resumen_cuentas|selectattr('tipo', 'equalto', 'normal')|list|length }}</div>
+                    <div class="stat-label">Cuentas Normales</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ resumen_cuentas|selectattr('tipo', 'equalto', 'contrapartida')|list|length }}</div>
+                    <div class="stat-label">Contrapartidas</div>
+                </div>
+                {% endif %}
+            </div>
+            
+            {% for cuenta in resumen_cuentas %}
+            <div class="cuenta-card">
+                <div class="cuenta-header">
+                    <div class="cuenta-info">
+                        <h3>
+                            <span class="cuenta-numero">{{ cuenta.cuenta }}</span>
+                            <span class="cuenta-nombre">{{ cuenta.nombre }}</span>
+                        </h3>
+                        <div style="color: #666; font-size: 0.9em;">
+                            <span style="background: {{ '#e3f2fd' if cuenta.tipo == 'normal' else '#fff3e0' }}; color: {{ '#1976d2' if cuenta.tipo == 'normal' else '#f57c00' }}; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: 600;">
+                                {{ 'Cuenta Normal' if cuenta.tipo == 'normal' else 'Contrapartida' }}
+                            </span>
+                            | {{ cuenta.num_movimientos }} movimiento{{ 's' if cuenta.num_movimientos != 1 else '' }}
+                        </div>
+                    </div>
+                    <div class="cuenta-stats">
+                        <div class="importe-total">{{ "%.2f"|format(cuenta.importe_total) }} €</div>
+                    </div>
+                </div>
+                
+                <div class="movimientos-container">
+                    {% for movimiento in cuenta.movimientos %}
+                    <div class="movimiento-item">
+                        <div class="movimiento-info">
+                            <div class="movimiento-fecha">{{ movimiento.fecha|datetimeformat('%d/%m/%Y') }}</div>
+                            <div class="movimiento-concepto">
+                                {{ movimiento.num_factura }} - {{ movimiento.concepto }}
+                                <br>
+                                <small>{{ movimiento.contrapartida }}</small>
+                            </div>
+                        </div>
+                        <div class="movimiento-importe {{ 'tipo-ingreso' if movimiento.tipo == 'Ingreso' else 'tipo-gasto' }}">
+                            {{ "%.2f"|format(movimiento.importe) }} €
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+            
+            {% else %}
+            <div class="empty-state">
+                <h3>📊 No hay datos para mostrar</h3>
+                <p>No se encontraron movimientos en el rango de fechas seleccionado.</p>
+                <a href="{{ url_for('nuevo_movimiento') }}" class="btn btn-success">Crear Primer Movimiento</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
