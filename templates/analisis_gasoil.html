@@ -357,6 +357,7 @@
                                 <th>Precio Cobrado por Km (€)</th>
                                 <th>Precio Pagado por Km (€)</th>
                                 <th>Variación (€)</th>
+                                <th>% Gasto Gasoil</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -380,6 +381,9 @@
                                 <td class="number">{{ "%.3f"|format(stats.precio_pagado_por_km) }}</td>
                                 <td class="number" style="color: {{ '#4caf50' if stats.variacion_precio >= 0 else '#f44336' }}">
                                     {{ "%.3f"|format(stats.variacion_precio) }}
+                                </td>
+                                <td class="number" style="color: {{ '#f44336' if stats.porcentaje_gasoil > 50 else '#4caf50' if stats.porcentaje_gasoil < 30 else '#ff9800' }}">
+                                    {{ "%.1f"|format(stats.porcentaje_gasoil) }}%
                                 </td>
                             </tr>
                             {% endfor %}
