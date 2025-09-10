@@ -231,9 +231,40 @@
             font-weight: 500;
         }
         
+        .desglose {
+            font-size: 0.85em;
+            line-height: 1.3;
+        }
+        
+        .desglose-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+        }
+        
+        .desglose-item .label {
+            font-weight: 600;
+            color: #666;
+            min-width: 50px;
+        }
+        
+        .desglose-item .value {
+            font-family: 'Courier New', monospace;
+            color: #333;
+        }
+        
+        .desglose-total {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+            padding-bottom: 3px;
+            border-bottom: 1px solid #ddd;
+        }
+        
         td:first-child {
             text-align: left;
             font-weight: 600;
+            font-size: 0.95em;
         }
         
         td:first-child small {
@@ -333,7 +364,7 @@
             </div>
             
             {% if estadisticas_vehiculos %}
-            <div class="chart-container">
+                <div class="chart-container">
                 <h3>
                     {% if vehiculo_seleccionado and not acumulado %}
                         📅 Análisis Mensual - {{ vehiculos|selectattr('id', 'equalto', vehiculo_seleccionado)|map(attribute='matricula')|first }} - Año {{ año_seleccionado }}
@@ -351,8 +382,8 @@
                                 <th>Km Recorridos</th>
                                 <th>Litros Totales</th>
                                 <th>Importe Total (€)</th>
-                                <th>Total Cobrado (€)</th>
-                                <th>Precio por Litro (€)</th>
+                                <th>Facturación</th>
+                                <th>Precio/ Litro (€)</th>
                                 <th>Consumo (L/100km)</th>
                                 <th>Precio Cobrado por Km (€)</th>
                                 <th>Precio Pagado por Km (€)</th>
@@ -366,7 +397,7 @@
                                 <td>
                                     {% if vehiculo_seleccionado and not acumulado %}
                                         <strong>{{ ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][stats.mes-1] }}</strong>
-                                    {% else %}
+                                        {% else %}
                                         <strong>{{ stats.vehiculo.matricula }}</strong><br>
                                         <small>{{ stats.vehiculo.marca }} {{ stats.vehiculo.modelo }}</small>
                                     {% endif %}
@@ -374,7 +405,27 @@
                                 <td class="number">{{ "%.0f"|format(stats.total_kms) }}</td>
                                 <td class="number">{{ "%.1f"|format(stats.total_litros) }}</td>
                                 <td class="number">{{ "%.2f"|format(stats.total_gasto) }}</td>
-                                <td class="number">{{ "%.2f"|format(stats.total_facturacion) }}</td>
+                                <td class="desglose">
+                                    <div class="desglose-total">
+                                        <strong>Total: {{ "%.2f"|format(stats.total_facturacion) }}€</strong>
+                                    </div>
+                                    <div class="desglose-item">
+                                        <span class="label">Base:</span> 
+                                        <span class="value">{{ "%.2f"|format(stats.total_facturacion_base or 0) }}€</span>
+                                    </div>
+                                    <div class="desglose-item">
+                                        <span class="label">HVO:</span> 
+                                        <span class="value">{{ "%.2f"|format(stats.total_dif_hvo or 0) }}€</span>
+                                    </div>
+                                    <div class="desglose-item">
+                                        <span class="label">Recargo:</span> 
+                                        <span class="value">{{ "%.2f"|format(stats.total_recargo or 0) }}€</span>
+                                    </div>
+                                    <div class="desglose-item">
+                                        <span class="label">Bonus:</span> 
+                                        <span class="value">{{ "%.2f"|format(stats.total_bonus or 0) }}€</span>
+                                    </div>
+                                </td>
                                 <td class="number">{{ "%.3f"|format(stats.precio_por_litro) }}</td>
                                 <td class="number">{{ "%.2f"|format(stats.consumo_por_100km) }}</td>
                                 <td class="number">{{ "%.3f"|format(stats.precio_cobrado_por_km) }}</td>

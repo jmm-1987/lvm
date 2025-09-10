@@ -90,9 +90,31 @@ class ConsumoGasoil(db.Model):
     total = db.Column(db.Float, nullable=False)  # litros * precio_litro
     kms = db.Column(db.Float, nullable=False)
     facturacion = db.Column(db.Float, nullable=True)  # Ingresos generados por el vehículo
+    recargo_combustible = db.Column(db.Float, nullable=True, default=0.0)  # Recargo de combustible
+    dif_hvo = db.Column(db.Float, nullable=True, default=0.0)  # Dif.HVO
+    bonus_calidad = db.Column(db.Float, nullable=True, default=0.0)  # Bonus calidad
     observaciones = db.Column(db.String(255), nullable=True)
     
     vehiculo = db.relationship('Vehiculo', backref='consumos')
+    
+    @property
+    def facturacion_completa(self):
+        """Calcula la facturación completa incluyendo recargos y bonus"""
+        # Manejar facturacion que puede ser string o número
+        if self.facturacion is None:
+            facturacion_base = 0
+        elif isinstance(self.facturacion, (int, float)):
+            facturacion_base = self.facturacion
+        else:
+            try:
+                facturacion_base = float(self.facturacion)
+            except (ValueError, TypeError):
+                facturacion_base = 0
+        
+        recargo = self.recargo_combustible or 0
+        dif_hvo = self.dif_hvo or 0
+        bonus = self.bonus_calidad or 0
+        return facturacion_base + recargo + dif_hvo + bonus
 
 # Eliminar el modelo Usuario y la tabla de usuarios
 # Definir un usuario en memoria para Flask-Login
@@ -1934,6 +1956,9 @@ def nuevo_consumo():
         precio_total = float(request.form['precio_total'])
         kms = float(request.form['kms'])
         facturacion = float(request.form.get('facturacion', 0)) if request.form.get('facturacion') else None
+        recargo_combustible = float(request.form.get('recargo_combustible', 0)) if request.form.get('recargo_combustible') else 0
+        dif_hvo = float(request.form.get('dif_hvo', 0)) if request.form.get('dif_hvo') else 0
+        bonus_calidad = float(request.form.get('bonus_calidad', 0)) if request.form.get('bonus_calidad') else 0
         observaciones = request.form.get('observaciones', '').strip()
         
         # Convertir fecha de dd/mm/yyyy a yyyy-mm-dd si es necesario
@@ -1954,6 +1979,9 @@ def nuevo_consumo():
             total=total,
             kms=kms,
             facturacion=facturacion,
+            recargo_combustible=recargo_combustible,
+            dif_hvo=dif_hvo,
+            bonus_calidad=bonus_calidad,
             observaciones=observaciones
         )
         
@@ -1978,6 +2006,9 @@ def editar_consumo(id):
         precio_total = float(request.form['precio_total'])
         kms = float(request.form['kms'])
         facturacion = float(request.form.get('facturacion', 0)) if request.form.get('facturacion') else None
+        recargo_combustible = float(request.form.get('recargo_combustible', 0)) if request.form.get('recargo_combustible') else 0
+        dif_hvo = float(request.form.get('dif_hvo', 0)) if request.form.get('dif_hvo') else 0
+        bonus_calidad = float(request.form.get('bonus_calidad', 0)) if request.form.get('bonus_calidad') else 0
         observaciones = request.form.get('observaciones', '').strip()
         
         # Convertir fecha de dd/mm/yyyy a yyyy-mm-dd si es necesario
@@ -1997,6 +2028,9 @@ def editar_consumo(id):
         consumo.total = total
         consumo.kms = kms
         consumo.facturacion = facturacion
+        consumo.recargo_combustible = recargo_combustible
+        consumo.dif_hvo = dif_hvo
+        consumo.bonus_calidad = bonus_calidad
         consumo.observaciones = observaciones
         
         db.session.commit()
@@ -2169,6 +2203,12 @@ def analisis_gasoil():
     # Calcular estadísticas por vehículo
     estadisticas_vehiculos = []
     
+    # Inicializar variables de desglose
+    total_facturacion_base = 0
+    total_dif_hvo = 0
+    total_recargo = 0
+    total_bonus = 0
+    
     # Si hay un vehículo seleccionado y no es acumulado, mostrar por meses
     if vehiculo_id and not acumulado:
         # Obtener todos los meses con datos para el vehículo seleccionado
@@ -2195,7 +2235,16 @@ def analisis_gasoil():
                     total_litros = sum(c.litros for c in consumos_mes)
                     total_gasto = sum(c.total for c in consumos_mes)
                     total_kms = sum(c.kms for c in consumos_mes)
-                    total_facturacion = sum(float(c.facturacion) if c.facturacion and str(c.facturacion).replace('.', '').replace('-', '').isdigit() else 0 for c in consumos_mes)
+                    total_facturacion = sum(c.facturacion_completa for c in consumos_mes)
+                    
+                    # Calcular totales por componente
+                    total_facturacion_base = sum(
+                        float(c.facturacion) if c.facturacion and isinstance(c.facturacion, str) 
+                        else (c.facturacion or 0) for c in consumos_mes
+                    )
+                    total_dif_hvo = sum(c.dif_hvo or 0 for c in consumos_mes)
+                    total_recargo = sum(c.recargo_combustible or 0 for c in consumos_mes)
+                    total_bonus = sum(c.bonus_calidad or 0 for c in consumos_mes)
                     
                     # Calcular precios y variaciones
                     precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
@@ -2217,7 +2266,11 @@ def analisis_gasoil():
                         'precio_cobrado_por_km': precio_cobrado_por_km,
                         'precio_pagado_por_km': precio_pagado_por_km,
                         'variacion_precio': variacion_precio,
-                        'porcentaje_gasoil': porcentaje_gasoil
+                        'porcentaje_gasoil': porcentaje_gasoil,
+                        'total_facturacion_base': total_facturacion_base,
+                        'total_dif_hvo': total_dif_hvo,
+                        'total_recargo': total_recargo,
+                        'total_bonus': total_bonus
                     })
             
             # Ordenar por mes
@@ -2246,7 +2299,16 @@ def analisis_gasoil():
                 total_litros = sum(c.litros for c in consumos_vehiculo)
                 total_gasto = sum(c.total for c in consumos_vehiculo)
                 total_kms = sum(c.kms for c in consumos_vehiculo)
-                total_facturacion = sum(float(c.facturacion) if c.facturacion and str(c.facturacion).replace('.', '').replace('-', '').isdigit() else 0 for c in consumos_vehiculo)
+                total_facturacion = sum(c.facturacion_completa for c in consumos_vehiculo)
+                
+                # Calcular totales por componente
+                total_facturacion_base = sum(
+                    float(c.facturacion) if c.facturacion and isinstance(c.facturacion, str) 
+                    else (c.facturacion or 0) for c in consumos_vehiculo
+                )
+                total_dif_hvo = sum(c.dif_hvo or 0 for c in consumos_vehiculo)
+                total_recargo = sum(c.recargo_combustible or 0 for c in consumos_vehiculo)
+                total_bonus = sum(c.bonus_calidad or 0 for c in consumos_vehiculo)
                 
                 # Calcular precios y variaciones
                 precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
@@ -2268,7 +2330,11 @@ def analisis_gasoil():
                     'precio_cobrado_por_km': precio_cobrado_por_km,
                     'precio_pagado_por_km': precio_pagado_por_km,
                     'variacion_precio': variacion_precio,
-                    'porcentaje_gasoil': porcentaje_gasoil
+                    'porcentaje_gasoil': porcentaje_gasoil,
+                    'total_facturacion_base': total_facturacion_base,
+                    'total_dif_hvo': total_dif_hvo,
+                    'total_recargo': total_recargo,
+                    'total_bonus': total_bonus
                 })
         
         # Ordenar por consumo por 100km (de menor a mayor - más eficiente primero)
@@ -2322,7 +2388,16 @@ def analisis_gasoil_pdf():
                     total_litros = sum(c.litros for c in consumos_mes)
                     total_gasto = sum(c.total for c in consumos_mes)
                     total_kms = sum(c.kms for c in consumos_mes)
-                    total_facturacion = sum(float(c.facturacion) if c.facturacion and str(c.facturacion).replace('.', '').replace('-', '').isdigit() else 0 for c in consumos_mes)
+                    total_facturacion = sum(c.facturacion_completa for c in consumos_mes)
+                    
+                    # Calcular totales por componente
+                    total_facturacion_base = sum(
+                        float(c.facturacion) if c.facturacion and isinstance(c.facturacion, str) 
+                        else (c.facturacion or 0) for c in consumos_mes
+                    )
+                    total_dif_hvo = sum(c.dif_hvo or 0 for c in consumos_mes)
+                    total_recargo = sum(c.recargo_combustible or 0 for c in consumos_mes)
+                    total_bonus = sum(c.bonus_calidad or 0 for c in consumos_mes)
                     
                     # Calcular precios y variaciones
                     precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
@@ -2344,7 +2419,11 @@ def analisis_gasoil_pdf():
                         'precio_cobrado_por_km': precio_cobrado_por_km,
                         'precio_pagado_por_km': precio_pagado_por_km,
                         'variacion_precio': variacion_precio,
-                        'porcentaje_gasoil': porcentaje_gasoil
+                        'porcentaje_gasoil': porcentaje_gasoil,
+                        'total_facturacion_base': total_facturacion_base,
+                        'total_dif_hvo': total_dif_hvo,
+                        'total_recargo': total_recargo,
+                        'total_bonus': total_bonus
                     })
             
             # Ordenar por mes
@@ -2373,7 +2452,7 @@ def analisis_gasoil_pdf():
         total_litros = sum(c.litros for c in consumos)
         total_gasto = sum(c.total for c in consumos)
         total_kms = sum(c.kms for c in consumos)
-        total_facturacion = sum(float(c.facturacion) if c.facturacion and str(c.facturacion).replace('.', '').replace('-', '').isdigit() else 0 for c in consumos)
+        total_facturacion = sum(c.facturacion_completa for c in consumos)
         
         # Calcular precios y variaciones
         precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
@@ -2394,7 +2473,11 @@ def analisis_gasoil_pdf():
             'precio_cobrado_por_km': precio_cobrado_por_km,
             'precio_pagado_por_km': precio_pagado_por_km,
             'variacion_precio': variacion_precio,
-            'porcentaje_gasoil': porcentaje_gasoil
+            'porcentaje_gasoil': porcentaje_gasoil,
+            'total_facturacion_base': total_facturacion_base,
+            'total_dif_hvo': total_dif_hvo,
+            'total_recargo': total_recargo,
+            'total_bonus': total_bonus
         })
         
         # Ordenar por consumo por 100km (de menor a mayor - más eficiente primero)
@@ -2438,65 +2521,65 @@ def analisis_gasoil_pdf():
         # Encabezados de la tabla en dos filas
         headers = []
         if vehiculo_id and not acumulado:
-            headers = ['Mes', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 'Total\nCobrado (€)', 
+            headers = ['Mes', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 'Total\nCobrado\nCompleto (€)', 
                       'Precio por\nLitro (€)', 'Consumo\n(L/100km)', 'Precio Cobrado\npor Km (€)', 
-                      'Precio Pagado\npor Km (€)', 'Variación\n(€)', '%\nGasoil']
-        else:
-            headers = ['Matrícula', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 'Total\nCobrado (€)', 
+                      'Precio Pagado\npor Km (€)', 'Variación\n(€)', '%\nGasto\nGasoil']
+    else:
+            headers = ['Matrícula', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 'Total\nCobrado\nCompleto (€)', 
                       'Precio por\nLitro (€)', 'Consumo\n(L/100km)', 'Precio Cobrado\npor Km (€)', 
-                      'Precio Pagado\npor Km (€)', 'Variación\n(€)', '%\nGasoil']
+                      'Precio Pagado\npor Km (€)', 'Variación\n(€)', '%\nGasto\nGasoil']
         
         # Datos de la tabla
-        data = [headers]
+    data = [headers]
         
-        for stats in estadisticas_vehiculos:
-            row = []
-            if vehiculo_id and not acumulado:
-                meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-                row.append(meses[stats['mes']-1])
-            else:
-                row.append(f"{stats['vehiculo'].matricula}\n{stats['vehiculo'].marca} {stats['vehiculo'].modelo}")
-            
-            row.extend([
-                f"{stats['total_kms']:.0f}",
-                f"{stats['total_litros']:.2f}",
-                f"{stats['total_gasto']:.2f}",
-                f"{stats['total_facturacion']:.2f}",
-                f"{stats['precio_por_litro']:.3f}",
-                f"{stats['consumo_por_100km']:.2f}",
-                f"{stats['precio_cobrado_por_km']:.3f}",
-                f"{stats['precio_pagado_por_km']:.3f}",
-                f"{stats['variacion_precio']:.3f}",
-                f"{stats['porcentaje_gasoil']:.1f}%"
-            ])
-            data.append(row)
+    for stats in estadisticas_vehiculos:
+        row = []
+        if vehiculo_id and not acumulado:
+            meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+            row.append(meses[stats['mes']-1])
+        else:
+            row.append(f"{stats['vehiculo'].matricula}\n{stats['vehiculo'].marca} {stats['vehiculo'].modelo}")
         
-        # Crear tabla con anchos optimizados para formato horizontal
-        table = Table(data, colWidths=[1.5*inch, 1.0*inch, 1.0*inch, 1.0*inch, 1.0*inch, 
-                                      1.0*inch, 1.0*inch, 1.0*inch, 1.0*inch, 1.0*inch, 0.8*inch])
-        
-        # Estilo de la tabla optimizado para formato horizontal con encabezados de dos líneas
-        table_style = TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 8),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 20),
-            ('TOPPADDING', (0, 0), (-1, 0), 15),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 1), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        row.extend([
+            f"{stats['total_kms']:.0f}",
+            f"{stats['total_litros']:.2f}",
+            f"{stats['total_gasto']:.2f}",
+            f"{stats['total_facturacion']:.2f}",
+            f"{stats['precio_por_litro']:.3f}",
+            f"{stats['consumo_por_100km']:.2f}",
+            f"{stats['precio_cobrado_por_km']:.3f}",
+            f"{stats['precio_pagado_por_km']:.3f}",
+            f"{stats['variacion_precio']:.3f}",
+            f"{stats['porcentaje_gasoil']:.1f}%"
         ])
-        
-        table.setStyle(table_style)
-        story.append(table)
-    else:
-        story.append(Paragraph("No hay datos disponibles para los filtros seleccionados.", styles['Normal']))
+        data.append(row)
+    
+    # Crear tabla con anchos optimizados para formato horizontal
+    table = Table(data, colWidths=[1.5*inch, 1.0*inch, 1.0*inch, 1.0*inch, 1.0*inch, 
+                                    1.0*inch, 1.0*inch, 1.0*inch, 1.0*inch, 1.0*inch, 0.8*inch])
+    
+    # Estilo de la tabla optimizado para formato horizontal con encabezados de dos líneas
+    table_style = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 20),
+        ('TOPPADDING', (0, 0), (-1, 0), 15),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 1), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 8), 
+    ])
+    
+    table.setStyle(table_style)
+    story.append(table)
+
+    story.append(Paragraph("No hay datos disponibles para los filtros seleccionados.", styles['Normal']))
     
     # Generar PDF
     doc.build(story)

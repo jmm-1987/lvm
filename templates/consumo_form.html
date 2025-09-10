@@ -269,17 +269,52 @@
                 
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="facturacion">💰 Facturación (€):</label>
+                        <label for="facturacion">💰 Facturación Base (€):</label>
                         <input type="number" id="facturacion" name="facturacion" 
                                value="{{ consumo.facturacion if consumo else '' }}" 
                                step="0.01" min="0" placeholder="0.00">
                     </div>
                     <div class="form-group">
-                        <label for="observaciones">📝 Observaciones:</label>
-                        <input type="text" id="observaciones" name="observaciones" 
-                               value="{{ consumo.observaciones if consumo else '' }}" 
-                               placeholder="Información adicional">
+                        <label for="recargo_combustible">⛽ Recargo Combustible (€):</label>
+                        <input type="number" id="recargo_combustible" name="recargo_combustible" 
+                               value="{{ consumo.recargo_combustible if consumo else '0' }}" 
+                               step="0.01" min="0" placeholder="0.00">
                     </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="dif_hvo">🔄 Dif.HVO (€):</label>
+                        <input type="number" id="dif_hvo" name="dif_hvo" 
+                               value="{{ consumo.dif_hvo if consumo else '0' }}" 
+                               step="0.01" min="0" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="bonus_calidad">⭐ Bonus Calidad (€):</label>
+                        <input type="number" id="bonus_calidad" name="bonus_calidad" 
+                               value="{{ consumo.bonus_calidad if consumo else '0' }}" 
+                               step="0.01" min="0" placeholder="0.00">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <div class="calculation-display">
+                        <label>💰 Facturación Completa:</label>
+                        <div id="facturacionCompletaDisplay" class="calculation-result">
+                            <span id="facturacionBase">0.00</span> + 
+                            <span id="recargo">0.00</span> + 
+                            <span id="difHvo">0.00</span> + 
+                            <span id="bonus">0.00</span> = 
+                            <strong id="totalCompleto">0.00€</strong>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="observaciones">📝 Observaciones:</label>
+                    <input type="text" id="observaciones" name="observaciones" 
+                           value="{{ consumo.observaciones if consumo else '' }}" 
+                           placeholder="Información adicional">
                 </div>
                 
                 <div class="buttons">
@@ -331,8 +366,30 @@
             }
         }
         
+        function calculateFacturacionCompleta() {
+            const facturacionBase = parseFloat(document.getElementById('facturacion').value) || 0;
+            const recargo = parseFloat(document.getElementById('recargo_combustible').value) || 0;
+            const difHvo = parseFloat(document.getElementById('dif_hvo').value) || 0;
+            const bonus = parseFloat(document.getElementById('bonus_calidad').value) || 0;
+            
+            const total = facturacionBase + recargo + difHvo + bonus;
+            
+            document.getElementById('facturacionBase').textContent = facturacionBase.toFixed(2);
+            document.getElementById('recargo').textContent = recargo.toFixed(2);
+            document.getElementById('difHvo').textContent = difHvo.toFixed(2);
+            document.getElementById('bonus').textContent = bonus.toFixed(2);
+            document.getElementById('totalCompleto').textContent = total.toFixed(2) + '€';
+        }
+        
         document.getElementById('litros').addEventListener('input', calculatePrecioLitro);
         document.getElementById('precio_total').addEventListener('input', calculatePrecioLitro);
+        document.getElementById('facturacion').addEventListener('input', calculateFacturacionCompleta);
+        document.getElementById('recargo_combustible').addEventListener('input', calculateFacturacionCompleta);
+        document.getElementById('dif_hvo').addEventListener('input', calculateFacturacionCompleta);
+        document.getElementById('bonus_calidad').addEventListener('input', calculateFacturacionCompleta);
+        
+        // Calcular al cargar la página
+        calculateFacturacionCompleta();
         
         // Validación de formulario
         document.getElementById('consumoForm').addEventListener('submit', function(e) {

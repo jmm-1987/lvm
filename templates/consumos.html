@@ -218,6 +218,28 @@
             font-family: 'Courier New', monospace;
         }
         
+        .desglose {
+            font-size: 0.85em;
+            line-height: 1.3;
+        }
+        
+        .desglose-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+        }
+        
+        .desglose-item .label {
+            font-weight: 600;
+            color: #666;
+            min-width: 50px;
+        }
+        
+        .desglose-item .value {
+            font-family: 'Courier New', monospace;
+            color: #333;
+        }
+        
         .flash-messages {
             margin-bottom: 20px;
         }
@@ -420,7 +442,8 @@
                             <th>Precio/L</th>
                             <th>Total</th>
                             <th>Kms</th>
-                            <th>Facturación</th>
+                            <th>Facturación Completa</th>
+                            <th>Desglose</th>
                             <th>Observaciones</th>
                             <th>Acciones</th>
                         </tr>
@@ -437,15 +460,37 @@
                             <td class="number"><strong>{{ "%.2f"|format(consumo.total) }}€</strong></td>
                             <td class="number">{{ "%.0f"|format(consumo.kms) }}</td>
                             <td class="number">
-                                {% if consumo.facturacion %}
-                                    {% if consumo.facturacion is number %}
-                                        {{ "%.2f"|format(consumo.facturacion) }}€
+                                <strong>
+                                    {% if consumo.facturacion_completa is number %}
+                                        {{ "%.2f"|format(consumo.facturacion_completa) }}€
                                     {% else %}
-                                        {{ consumo.facturacion }}€
+                                        {{ consumo.facturacion_completa }}€
                                     {% endif %}
-                                {% else %}
-                                    -
-                                {% endif %}
+                                </strong>
+                            </td>
+                            <td class="desglose">
+                                <div class="desglose-item">
+                                    <span class="label">Base:</span> 
+                                    <span class="value">
+                                        {% if consumo.facturacion is number %}
+                                            {{ "%.2f"|format(consumo.facturacion or 0) }}€
+                                        {% else %}
+                                            {{ consumo.facturacion or 0 }}€
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                <div class="desglose-item">
+                                    <span class="label">HVO:</span> 
+                                    <span class="value">{{ "%.2f"|format(consumo.dif_hvo or 0) }}€</span>
+                                </div>
+                                <div class="desglose-item">
+                                    <span class="label">Recargo:</span> 
+                                    <span class="value">{{ "%.2f"|format(consumo.recargo_combustible or 0) }}€</span>
+                                </div>
+                                <div class="desglose-item">
+                                    <span class="label">Bonus:</span> 
+                                    <span class="value">{{ "%.2f"|format(consumo.bonus_calidad or 0) }}€</span>
+                                </div>
                             </td>
                             <td>{{ consumo.observaciones or '-' }}</td>
                             <td class="actions-cell">
