@@ -278,7 +278,7 @@
                         <label for="recargo_combustible">⛽ Recargo Combustible (€):</label>
                         <input type="number" id="recargo_combustible" name="recargo_combustible" 
                                value="{{ consumo.recargo_combustible if consumo else '0' }}" 
-                               step="0.01" min="0" placeholder="0.00">
+                               step="0.01" placeholder="0.00 (puede ser negativo)">
                     </div>
                 </div>
                 
@@ -293,7 +293,7 @@
                         <label for="bonus_calidad">⭐ Bonus Calidad (€):</label>
                         <input type="number" id="bonus_calidad" name="bonus_calidad" 
                                value="{{ consumo.bonus_calidad if consumo else '0' }}" 
-                               step="0.01" min="0" placeholder="0.00">
+                               step="0.01" placeholder="0.00 (puede ser negativo)">
                     </div>
                 </div>
                 

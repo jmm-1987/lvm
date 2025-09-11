@@ -2250,6 +2250,7 @@ def analisis_gasoil():
                     precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
                     consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
                     precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
+                    precio_cobrado_por_km_limpio = total_facturacion_base / total_kms if total_kms > 0 else 0
                     precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
                     variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
                     porcentaje_gasoil = (total_gasto / total_facturacion * 100) if total_facturacion > 0 else 0
@@ -2264,6 +2265,7 @@ def analisis_gasoil():
                         'precio_por_litro': precio_por_litro,
                         'consumo_por_100km': consumo_por_100km,
                         'precio_cobrado_por_km': precio_cobrado_por_km,
+                        'precio_cobrado_por_km_limpio': precio_cobrado_por_km_limpio,
                         'precio_pagado_por_km': precio_pagado_por_km,
                         'variacion_precio': variacion_precio,
                         'porcentaje_gasoil': porcentaje_gasoil,
@@ -2314,6 +2316,7 @@ def analisis_gasoil():
                 precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
                 consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
                 precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
+                precio_cobrado_por_km_limpio = total_facturacion_base / total_kms if total_kms > 0 else 0
                 precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
                 variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
                 porcentaje_gasoil = (total_gasto / total_facturacion * 100) if total_facturacion > 0 else 0
@@ -2328,6 +2331,7 @@ def analisis_gasoil():
                     'precio_por_litro': precio_por_litro,
                     'consumo_por_100km': consumo_por_100km,
                     'precio_cobrado_por_km': precio_cobrado_por_km,
+                    'precio_cobrado_por_km_limpio': precio_cobrado_por_km_limpio,
                     'precio_pagado_por_km': precio_pagado_por_km,
                     'variacion_precio': variacion_precio,
                     'porcentaje_gasoil': porcentaje_gasoil,
@@ -2338,7 +2342,7 @@ def analisis_gasoil():
                 })
         
         # Ordenar por consumo por 100km (de menor a mayor - más eficiente primero)
-        estadisticas_vehiculos.sort(key=lambda x: x['consumo_por_100km'])
+        estadisticas_vehiculos.sort(key=lambda x: x['porcentaje_gasoil'])
     
     return render_template('analisis_gasoil.html', 
                          estadisticas_vehiculos=estadisticas_vehiculos,
@@ -2403,6 +2407,7 @@ def analisis_gasoil_pdf():
                     precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
                     consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
                     precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
+                    precio_cobrado_por_km_limpio = total_facturacion_base / total_kms if total_kms > 0 else 0
                     precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
                     variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
                     porcentaje_gasoil = (total_gasto / total_facturacion * 100) if total_facturacion > 0 else 0
@@ -2417,6 +2422,7 @@ def analisis_gasoil_pdf():
                         'precio_por_litro': precio_por_litro,
                         'consumo_por_100km': consumo_por_100km,
                         'precio_cobrado_por_km': precio_cobrado_por_km,
+                        'precio_cobrado_por_km_limpio': precio_cobrado_por_km_limpio,
                         'precio_pagado_por_km': precio_pagado_por_km,
                         'variacion_precio': variacion_precio,
                         'porcentaje_gasoil': porcentaje_gasoil,
@@ -2447,53 +2453,64 @@ def analisis_gasoil_pdf():
             
             consumos = query.all()
             
-    if consumos:
+            if consumos:
                 # Calcular estadísticas
-        total_litros = sum(c.litros for c in consumos)
-        total_gasto = sum(c.total for c in consumos)
-        total_kms = sum(c.kms for c in consumos)
-        total_facturacion = sum(c.facturacion_completa for c in consumos)
-        
-        # Calcular precios y variaciones
-        precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
-        consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
-        precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
-        precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
-        variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
-        porcentaje_gasoil = (total_gasto / total_facturacion * 100) if total_facturacion > 0 else 0
-        
-        estadisticas_vehiculos.append({
-            'vehiculo': vehiculo,
-            'total_litros': total_litros,
-            'total_gasto': total_gasto,
-            'total_kms': total_kms,
-            'total_facturacion': total_facturacion,
-            'precio_por_litro': precio_por_litro,
-            'consumo_por_100km': consumo_por_100km,
-            'precio_cobrado_por_km': precio_cobrado_por_km,
-            'precio_pagado_por_km': precio_pagado_por_km,
-            'variacion_precio': variacion_precio,
-            'porcentaje_gasoil': porcentaje_gasoil,
-            'total_facturacion_base': total_facturacion_base,
-            'total_dif_hvo': total_dif_hvo,
-            'total_recargo': total_recargo,
-            'total_bonus': total_bonus
-        })
+                total_litros = sum(c.litros for c in consumos)
+                total_gasto = sum(c.total for c in consumos)
+                total_kms = sum(c.kms for c in consumos)
+                total_facturacion = sum(c.facturacion_completa for c in consumos)
+                
+                # Calcular totales por componente
+                total_facturacion_base = sum(
+                    float(c.facturacion) if c.facturacion and isinstance(c.facturacion, str) 
+                    else (c.facturacion or 0) for c in consumos
+                )
+                total_dif_hvo = sum(c.dif_hvo or 0 for c in consumos)
+                total_recargo = sum(c.recargo_combustible or 0 for c in consumos)
+                total_bonus = sum(c.bonus_calidad or 0 for c in consumos)
+                
+                # Calcular precios y variaciones
+                precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
+                consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
+                precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
+                precio_cobrado_por_km_limpio = total_facturacion_base / total_kms if total_kms > 0 else 0
+                precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
+                variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
+                porcentaje_gasoil = (total_gasto / total_facturacion * 100) if total_facturacion > 0 else 0
+                
+                estadisticas_vehiculos.append({
+                    'vehiculo': vehiculo,
+                    'total_litros': total_litros,
+                    'total_gasto': total_gasto,
+                    'total_kms': total_kms,
+                    'total_facturacion': total_facturacion,
+                    'precio_por_litro': precio_por_litro,
+                    'consumo_por_100km': consumo_por_100km,
+                    'precio_cobrado_por_km': precio_cobrado_por_km,
+                    'precio_cobrado_por_km_limpio': precio_cobrado_por_km_limpio,
+                    'precio_pagado_por_km': precio_pagado_por_km,
+                    'variacion_precio': variacion_precio,
+                    'porcentaje_gasoil': porcentaje_gasoil,
+                    'total_facturacion_base': total_facturacion_base,
+                    'total_dif_hvo': total_dif_hvo,
+                    'total_recargo': total_recargo,
+                    'total_bonus': total_bonus
+                })
         
         # Ordenar por consumo por 100km (de menor a mayor - más eficiente primero)
-        estadisticas_vehiculos.sort(key=lambda x: x['consumo_por_100km'])
+        estadisticas_vehiculos.sort(key=lambda x: x['porcentaje_gasoil'])
     
     # Crear el PDF en formato horizontal
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=50, leftMargin=50, topMargin=50, bottomMargin=50)
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=40, leftMargin=40, topMargin=50, bottomMargin=50)
     
     # Estilos
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
-        fontSize=16,
-        spaceAfter=30,
+        fontSize=12,
+        spaceAfter=15,
         alignment=1  # Centrado
     )
     
@@ -2514,20 +2531,20 @@ def analisis_gasoil_pdf():
         titulo += f" - {meses[mes-1]}"
     
     story.append(Paragraph(titulo, title_style))
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 6))
     
     # Crear tabla
     if estadisticas_vehiculos:
         # Encabezados de la tabla en dos filas
         headers = []
         if vehiculo_id and not acumulado:
-            headers = ['Mes', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 'Total\nCobrado\nCompleto (€)', 
-                      'Precio por\nLitro (€)', 'Consumo\n(L/100km)', 'Precio Cobrado\npor Km (€)', 
-                      'Precio Pagado\npor Km (€)', 'Variación\n(€)', '%\nGasto\nGasoil']
-    else:
-            headers = ['Matrícula', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 'Total\nCobrado\nCompleto (€)', 
-                      'Precio por\nLitro (€)', 'Consumo\n(L/100km)', 'Precio Cobrado\npor Km (€)', 
-                      'Precio Pagado\npor Km (€)', 'Variación\n(€)', '%\nGasto\nGasoil']
+            headers = ['Mes', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 
+                      'Precio por\nLitro (€)', 'Consumo\n(L/100km)', 'Total\nCobrado\nCompleto (€)', 
+                      'Precio Cobrado\npor Km\nLimpio (€)', 'Precio Cobrado\npor Km (€)', 'Precio Pagado\npor Km (€)', 'Variación\n(€)', '%\nGasto\nGasoil']
+        else:
+            headers = ['Matrícula', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 
+                      'Precio por\nLitro (€)', 'Consumo\n(L/100km)', 'Total\nCobrado\nCompleto (€)', 
+                      'Precio Cobrado\npor Km\nLimpio (€)', 'Precio Cobrado\npor Km (€)', 'Precio Pagado\npor Km (€)', 'Variación\n(€)', '%\nGasto\nGasoil']
         
         # Datos de la tabla
     data = [headers]
@@ -2545,9 +2562,10 @@ def analisis_gasoil_pdf():
             f"{stats['total_kms']:.0f}",
             f"{stats['total_litros']:.2f}",
             f"{stats['total_gasto']:.2f}",
-            f"{stats['total_facturacion']:.2f}",
             f"{stats['precio_por_litro']:.3f}",
             f"{stats['consumo_por_100km']:.2f}",
+            f"{stats['total_facturacion']:.2f}",
+            f"{stats['precio_cobrado_por_km_limpio']:.3f}",
             f"{stats['precio_cobrado_por_km']:.3f}",
             f"{stats['precio_pagado_por_km']:.3f}",
             f"{stats['variacion_precio']:.3f}",
@@ -2555,9 +2573,53 @@ def analisis_gasoil_pdf():
         ])
         data.append(row)
     
+    # Añadir filas de totales y medias si hay datos
+    if estadisticas_vehiculos:
+        # Calcular totales
+        total_kms = sum(stats['total_kms'] for stats in estadisticas_vehiculos)
+        total_litros = sum(stats['total_litros'] for stats in estadisticas_vehiculos)
+        total_gasto = sum(stats['total_gasto'] for stats in estadisticas_vehiculos)
+        total_facturacion = sum(stats['total_facturacion'] for stats in estadisticas_vehiculos)
+        total_facturacion_base = sum(stats['total_facturacion_base'] for stats in estadisticas_vehiculos)
+        
+        # Fila de totales
+        totals_row = ['TOTALES']
+        totals_row.extend([
+            f"{total_kms:.0f}",
+            f"{total_litros:.1f}",
+            f"{total_gasto:.2f}",
+            f"{total_gasto / total_litros:.3f}" if total_litros > 0 else "0.000",
+            f"{total_litros / total_kms * 100:.2f}" if total_kms > 0 else "0.00",
+            f"{total_facturacion:.2f}",
+            f"{total_facturacion_base / total_kms:.3f}" if total_kms > 0 else "0.000",
+            f"{total_facturacion / total_kms:.3f}" if total_kms > 0 else "0.000",
+            f"{total_gasto / total_kms:.3f}" if total_kms > 0 else "0.000",
+            f"{(total_facturacion / total_kms - total_gasto / total_kms):.3f}" if total_kms > 0 else "0.000",
+            f"{total_gasto / total_facturacion * 100:.1f}%" if total_facturacion > 0 else "0.0%"
+        ])
+        data.append(totals_row)
+        
+        # Fila de medias
+        num_vehiculos = len(estadisticas_vehiculos)
+        averages_row = ['MEDIAS']
+        averages_row.extend([
+            f"{total_kms / num_vehiculos:.0f}" if num_vehiculos > 0 else "0",
+            f"{total_litros / num_vehiculos:.1f}" if num_vehiculos > 0 else "0.0",
+            f"{total_gasto / num_vehiculos:.2f}" if num_vehiculos > 0 else "0.00",
+            f"{sum(stats['precio_por_litro'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",
+            f"{sum(stats['consumo_por_100km'] for stats in estadisticas_vehiculos) / num_vehiculos:.2f}" if num_vehiculos > 0 else "0.00",
+            f"{total_facturacion / num_vehiculos:.2f}" if num_vehiculos > 0 else "0.00",
+            f"{sum(stats['precio_cobrado_por_km_limpio'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",
+            f"{sum(stats['precio_cobrado_por_km'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",
+            f"{sum(stats['precio_pagado_por_km'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",
+            f"{sum(stats['variacion_precio'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",
+            f"{sum(stats['porcentaje_gasoil'] for stats in estadisticas_vehiculos) / num_vehiculos:.1f}%" if num_vehiculos > 0 else "0.0%"
+        ])
+        data.append(averages_row)
+    
     # Crear tabla con anchos optimizados para formato horizontal
-    table = Table(data, colWidths=[1.5*inch, 1.0*inch, 1.0*inch, 1.0*inch, 1.0*inch, 
-                                    1.0*inch, 1.0*inch, 1.0*inch, 1.0*inch, 1.0*inch, 0.8*inch])
+    table = Table(data, colWidths=[0.9*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 
+                                    0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.6*inch])
     
     # Estilo de la tabla optimizado para formato horizontal con encabezados de dos líneas
     table_style = TableStyle([
@@ -2565,16 +2627,31 @@ def analisis_gasoil_pdf():
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 20),
-        ('TOPPADDING', (0, 0), (-1, 0), 15),
+        ('FONTSIZE', (0, 0), (-1, 0), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('FONTSIZE', (0, 1), (-1, -1), 6),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('TOPPADDING', (0, 1), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 8), 
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
     ])
+    
+    # Añadir estilos para las filas de totales y medias si existen
+    if estadisticas_vehiculos:
+        num_data_rows = len(estadisticas_vehiculos)
+        # Fila de totales (penúltima fila)
+        totals_row_idx = num_data_rows + 1
+        table_style.add('BACKGROUND', (0, totals_row_idx), (-1, totals_row_idx), colors.lightgrey)
+        table_style.add('FONTNAME', (0, totals_row_idx), (-1, totals_row_idx), 'Helvetica-Bold')
+        table_style.add('FONTSIZE', (0, totals_row_idx), (-1, totals_row_idx), 6)
+        
+        # Fila de medias (última fila)
+        averages_row_idx = num_data_rows + 2
+        table_style.add('BACKGROUND', (0, averages_row_idx), (-1, averages_row_idx), colors.lightblue)
+        table_style.add('FONTNAME', (0, averages_row_idx), (-1, averages_row_idx), 'Helvetica-Bold')
+        table_style.add('FONTSIZE', (0, averages_row_idx), (-1, averages_row_idx), 6)
     
     table.setStyle(table_style)
     story.append(table)
