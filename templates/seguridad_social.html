@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>521 Seguridad Social</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 0; }
+        .container { max-width: 1200px; margin: 40px auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 36px 40px; }
+        h1 { color: #1976d2; text-align: center; margin-bottom: 30px; }
+        .subtitle { color: #666; text-align: center; margin-bottom: 30px; font-size: 1.1em; }
+        form { display:flex; align-items:center; justify-content:center; gap:15px; flex-wrap:wrap; margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; }
+        label { font-weight: bold; margin-right: 10px; color: #333; }
+        input[type="date"] { padding: 10px; border-radius: 5px; border: 1px solid #b0bec5; margin: 0 10px; font-size: 14px; }
+        button { padding: 12px 24px; background: #1976d2; color: #fff; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; text-decoration:none; display:inline-block; }
+        button:hover { background: #1565c0; }
+        .menu-btn { padding: 12px 24px; background: #e53935; color: #fff; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; text-decoration:none; display:inline-block; margin-left: 10px; }
+        .menu-btn:hover { background: #b71c1c; }
+        .resumen { background: #e3f2fd; border-radius: 8px; padding: 20px; margin-bottom: 30px; text-align: center; font-size: 1.3em; font-weight: bold; color: #1976d2; }
+        .detalle-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; table-layout: fixed; }
+        .detalle-table th, .detalle-table td { padding: 12px 15px; border-bottom: 1px solid #e0e0e0; text-align: left; }
+        .detalle-table th:nth-child(1), .detalle-table td:nth-child(1) { width: 12%; } /* Cuenta - más estrecha */
+        .detalle-table th:nth-child(2), .detalle-table td:nth-child(2) { width: 25%; } /* Descripción */
+        .detalle-table th:nth-child(3), .detalle-table td:nth-child(3) { width: 15%; text-align: right; padding-right: 20px; font-weight: bold; } /* Total */
+        .detalle-table th:nth-child(4), .detalle-table td:nth-child(4) { width: 48%; } /* Detalle - más ancha */
+        .detalle-table th { background: #e3f2fd; color: #1976d2; font-weight: bold; }
+        .detalle-table tr:hover { background: #f5f5f5; }
+        .total-row { background: #e8f5e8 !important; font-weight: bold; font-size: 1.1em; }
+        .total-row td { border-top: 2px solid #4caf50; border-bottom: 2px solid #4caf50; }
+        .cuenta-numero { font-family: 'Courier New', monospace; font-weight: bold; color: #1976d2; }
+        .movimientos-detalle { margin-top: 10px; }
+        .movimiento-item { padding: 5px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.9em; }
+        .movimiento-item:last-child { border-bottom: none; }
+        .movimiento-fecha { color: #666; }
+        .movimiento-importe { font-weight: bold; color: #1976d2; }
+        .empty-state { text-align: center; padding: 40px; color: #666; font-size: 1.1em; }
+        .info-box { background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; padding: 15px; margin-bottom: 20px; color: #856404; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Informe 521 - Seguridad Social</h1>
+        <p class="subtitle">Suma de cuentas de seguridad social a cargo de empresa y empleado</p>
+        
+        <form method="POST">
+            <label for="fecha_inicio">Desde:</label>
+            <input type="date" id="fecha_inicio" name="fecha_inicio" value="{{ fecha_inicio }}" required>
+            
+            <label for="fecha_fin">Hasta:</label>
+            <input type="date" id="fecha_fin" name="fecha_fin" value="{{ fecha_fin }}" required>
+            
+            <button type="submit">🔍 Generar Informe</button>
+            <a href="/" class="menu-btn">🏠 Menú Principal</a>
+        </form>
+        
+        {% if detalle_seguridad_social %}
+            <div class="info-box">
+                <strong>ℹ️ Información:</strong> Este informe suma todas las cuentas que empiecen por "521" o contengan "seguridad social" en su nombre, incluyendo tanto los importes a cargo de la empresa como a cargo del empleado. En el detalle se muestra la cuenta de contrapartida de cada movimiento.
+            </div>
+            
+            <div class="resumen">
+                💰 Total Seguridad Social: {{ "%.2f"|format(total_seguridad_social) }}€
+            </div>
+            
+            <table class="detalle-table">
+                <thead>
+                    <tr>
+                        <th>Cuenta</th>
+                        <th>Descripción</th>
+                        <th>Total (€)</th>
+                        <th>Detalle</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cuenta in detalle_seguridad_social %}
+                    <tr>
+                        <td class="cuenta-numero">{{ cuenta.cuenta }}</td>
+                        <td>{{ cuenta.nombre }}</td>
+                        <td>{{ "%.2f"|format(cuenta.total) }}</td>
+                        <td>
+                            <div class="movimientos-detalle">
+                                {% for mov in cuenta.movimientos %}
+                                <div class="movimiento-item">
+                                    <span class="movimiento-fecha">{{ mov.fecha }}</span> - 
+                                    <strong>{{ mov.concepto }}</strong> - 
+                                    <span class="movimiento-importe">{{ "%.2f"|format(mov.importe) }}€</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="total-row">
+                        <td colspan="2"><strong>TOTAL GENERAL</strong></td>
+                        <td><strong>{{ "%.2f"|format(total_seguridad_social) }}€</strong></td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        {% else %}
+            <div class="empty-state">
+                <p>📋 Selecciona un rango de fechas y haz clic en "Generar Informe" para ver los datos de seguridad social.</p>
+                <p>El informe mostrará todas las cuentas que empiecen por "521" o contengan "seguridad social" en su nombre.</p>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

@@ -555,7 +555,7 @@
                                                 {{ item.empleado.nombre.split(' ')[0][0] }}{{ item.empleado.nombre.split(' ')[1][0] if item.empleado.nombre.split(' ')|length > 1 else '' }}
                                             </div>
                                             <div class="employee-details">
-                                                <h4>{{ item.empleado.nombre.replace('EMP ', '') }}</h4>
+                                                <h4>{{ item.empleado.nombre|limpiar_empleado }}</h4>
                                                 <div class="employee-dni">{{ item.empleado.cuenta }}</div>
                                                 {% if item.tiene_ultima_nomina %}
                                                 <div class="employee-history">📋 Última nómina cargada</div>
@@ -570,7 +570,7 @@
                                     <td class="amount-cell positive">{{ "%.2f"|format(item.config.dietas) }} €</td>
                                     <td class="total-cell">{{ "%.2f"|format(item.total) }} €</td>
                                     <td class="actions-cell">
-                                        <button onclick="abrirModalEditar({{ item.empleado.id }}, '{{ item.empleado.nombre }}', {{ item.config.liquido_percibir }}, {{ item.config.retencion_irpf }}, {{ item.config.ss_trabajador }}, {{ item.config.ss_empresa }}, {{ item.config.dietas }})" class="btn btn-primary">
+                                        <button onclick="abrirModalEditar({{ item.empleado.id }}, '{{ item.empleado.nombre|limpiar_empleado }}', {{ item.config.liquido_percibir }}, {{ item.config.retencion_irpf }}, {{ item.config.ss_trabajador }}, {{ item.config.ss_empresa }}, {{ item.config.dietas }})" class="btn btn-primary">
                                             ⚙️
                                         </button>
                                     </td>

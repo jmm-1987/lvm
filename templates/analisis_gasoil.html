@@ -403,6 +403,7 @@
                                 <th>Litros Totales</th>
                                 <th>Importe Total (€)</th>
                                 <th>Precio/ Litro (€)</th>
+                                <th>Precio/ Litro con Bonificación (€)</th>
                                 <th>Consumo (L/100km)</th>
                                 <th>Facturación</th>
                                 <th>Precio Cobrado por Km Limpio (€)</th>
@@ -427,6 +428,7 @@
                                 <td class="number">{{ "%.1f"|format(stats.total_litros) }}</td>
                                 <td class="number">{{ "%.2f"|format(stats.total_gasto) }}</td>
                                 <td class="number">{{ "%.3f"|format(stats.precio_por_litro) }}</td>
+                                <td class="number">{{ "%.3f"|format(stats.precio_por_litro_bonificacion) }}</td>
                                 <td class="number">{{ "%.2f"|format(stats.consumo_por_100km) }}</td>
                                 <td class="desglose">
                                     <div class="desglose-total">
@@ -463,29 +465,14 @@
                             
                             <!-- Fila de totales y medias -->
                             <tr class="totals-row" style="background-color: #f5f5f5; font-weight: bold; border-top: 2px solid #333;">
-                                <td><strong>TOTALES</strong></td>
+                                <td><strong>TOTALES/MEDIAS</strong></td>
                                 <td class="number">{{ "%.0f"|format(estadisticas_vehiculos|sum(attribute='total_kms')) }}</td>
                                 <td class="number">{{ "%.1f"|format(estadisticas_vehiculos|sum(attribute='total_litros')) }}</td>
                                 <td class="number">{{ "%.2f"|format(estadisticas_vehiculos|sum(attribute='total_gasto')) }}</td>
-                                <td class="number">{{ "%.3f"|format((estadisticas_vehiculos|sum(attribute='total_gasto')) / (estadisticas_vehiculos|sum(attribute='total_litros')) if (estadisticas_vehiculos|sum(attribute='total_litros')) > 0 else 0) }}</td>
-                                <td class="number">{{ "%.2f"|format((estadisticas_vehiculos|sum(attribute='total_litros')) / (estadisticas_vehiculos|sum(attribute='total_kms')) * 100 if (estadisticas_vehiculos|sum(attribute='total_kms')) > 0 else 0) }}</td>
-                                <td class="number">{{ "%.2f"|format(estadisticas_vehiculos|sum(attribute='total_facturacion')) }}</td>
-                                <td class="number">{{ "%.3f"|format((estadisticas_vehiculos|sum(attribute='total_facturacion_base')) / (estadisticas_vehiculos|sum(attribute='total_kms')) if (estadisticas_vehiculos|sum(attribute='total_kms')) > 0 else 0) }}</td>
-                                <td class="number">{{ "%.3f"|format((estadisticas_vehiculos|sum(attribute='total_facturacion')) / (estadisticas_vehiculos|sum(attribute='total_kms')) if (estadisticas_vehiculos|sum(attribute='total_kms')) > 0 else 0) }}</td>
-                                <td class="number">{{ "%.3f"|format((estadisticas_vehiculos|sum(attribute='total_gasto')) / (estadisticas_vehiculos|sum(attribute='total_kms')) if (estadisticas_vehiculos|sum(attribute='total_kms')) > 0 else 0) }}</td>
-                                <td class="number">{{ "%.3f"|format(((estadisticas_vehiculos|sum(attribute='total_facturacion')) / (estadisticas_vehiculos|sum(attribute='total_kms')) if (estadisticas_vehiculos|sum(attribute='total_kms')) > 0 else 0) - ((estadisticas_vehiculos|sum(attribute='total_gasto')) / (estadisticas_vehiculos|sum(attribute='total_kms')) if (estadisticas_vehiculos|sum(attribute='total_kms')) > 0 else 0)) }}</td>
-                                <td class="number">{{ "%.1f"|format((estadisticas_vehiculos|sum(attribute='total_gasto')) / (estadisticas_vehiculos|sum(attribute='total_facturacion')) * 100 if (estadisticas_vehiculos|sum(attribute='total_facturacion')) > 0 else 0) }}%</td>
-                            </tr>
-                            
-                            <!-- Fila de medias -->
-                            <tr class="averages-row" style="background-color: #e8f4f8; font-weight: bold;">
-                                <td><strong>MEDIAS</strong></td>
-                                <td class="number">{{ "%.0f"|format((estadisticas_vehiculos|sum(attribute='total_kms')) / estadisticas_vehiculos|length if estadisticas_vehiculos|length > 0 else 0) }}</td>
-                                <td class="number">{{ "%.1f"|format((estadisticas_vehiculos|sum(attribute='total_litros')) / estadisticas_vehiculos|length if estadisticas_vehiculos|length > 0 else 0) }}</td>
-                                <td class="number">{{ "%.2f"|format((estadisticas_vehiculos|sum(attribute='total_gasto')) / estadisticas_vehiculos|length if estadisticas_vehiculos|length > 0 else 0) }}</td>
                                 <td class="number">{{ "%.3f"|format((estadisticas_vehiculos|sum(attribute='precio_por_litro')) / estadisticas_vehiculos|length if estadisticas_vehiculos|length > 0 else 0) }}</td>
+                                <td class="number">{{ "%.3f"|format((estadisticas_vehiculos|sum(attribute='precio_por_litro_bonificacion')) / estadisticas_vehiculos|length if estadisticas_vehiculos|length > 0 else 0) }}</td>
                                 <td class="number">{{ "%.2f"|format((estadisticas_vehiculos|sum(attribute='consumo_por_100km')) / estadisticas_vehiculos|length if estadisticas_vehiculos|length > 0 else 0) }}</td>
-                                <td class="number">{{ "%.2f"|format((estadisticas_vehiculos|sum(attribute='total_facturacion')) / estadisticas_vehiculos|length if estadisticas_vehiculos|length > 0 else 0) }}</td>
+                                <td class="number">{{ "%.2f"|format(estadisticas_vehiculos|sum(attribute='total_facturacion')) }}</td>
                                 <td class="number">{{ "%.3f"|format((estadisticas_vehiculos|sum(attribute='precio_cobrado_por_km_limpio')) / estadisticas_vehiculos|length if estadisticas_vehiculos|length > 0 else 0) }}</td>
                                 <td class="number">{{ "%.3f"|format((estadisticas_vehiculos|sum(attribute='precio_cobrado_por_km')) / estadisticas_vehiculos|length if estadisticas_vehiculos|length > 0 else 0) }}</td>
                                 <td class="number">{{ "%.3f"|format((estadisticas_vehiculos|sum(attribute='precio_pagado_por_km')) / estadisticas_vehiculos|length if estadisticas_vehiculos|length > 0 else 0) }}</td>

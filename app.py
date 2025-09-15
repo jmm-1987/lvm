@@ -298,8 +298,13 @@ def nuevo_movimiento():
             concepto_obj.contrapartida_id = contrapartida_id
             db.session.add(concepto_obj)
             idx += 1
-        db.session.commit()
-        return redirect(url_for('listar_movimientos'))
+        try:
+            commit_con_reintentos()
+            return redirect(url_for('listar_movimientos'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al guardar el movimiento: {str(e)}', 'error')
+            return render_template('movimiento_form.html', cuentas_normales=cuentas_normales, cuentas_contrapartida=cuentas_contrapartida, movimiento=None, conceptos=None)
     return render_template('movimiento_form.html', cuentas_normales=cuentas_normales, cuentas_contrapartida=cuentas_contrapartida)
 
 @app.route('/movimientos/editar/<int:id>', methods=['GET', 'POST'])
@@ -343,17 +348,28 @@ def editar_movimiento(id):
             concepto_obj.contrapartida_id = contrapartida_id
             db.session.add(concepto_obj)
             idx += 1
-        db.session.commit()
-        return redirect(url_for('listar_movimientos'))
+        try:
+            commit_con_reintentos()
+            return redirect(url_for('listar_movimientos'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al actualizar el movimiento: {str(e)}', 'error')
+            conceptos = MovimientoConcepto.query.filter_by(movimiento_id=movimiento.id).all()
+            return render_template('movimiento_form.html', movimiento=movimiento, cuentas_normales=cuentas_normales, cuentas_contrapartida=cuentas_contrapartida, conceptos=conceptos)
     conceptos = MovimientoConcepto.query.filter_by(movimiento_id=movimiento.id).all()
     return render_template('movimiento_form.html', movimiento=movimiento, cuentas_normales=cuentas_normales, cuentas_contrapartida=cuentas_contrapartida, conceptos=conceptos)
 
 @app.route('/movimientos/borrar/<int:id>', methods=['POST'])
 def borrar_movimiento(id):
-    movimiento = Movimiento.query.get_or_404(id)
-    db.session.delete(movimiento)
-    db.session.commit()
-    flash('Movimiento borrado correctamente.', 'success')
+    try:
+        movimiento = Movimiento.query.get_or_404(id)
+        db.session.delete(movimiento)
+        commit_con_reintentos()
+        flash('Movimiento borrado correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al borrar el movimiento: {str(e)}', 'error')
+    
     return redirect(url_for('listar_movimientos'))
 
 @app.route('/movimientos/duplicar/<int:id>', methods=['GET'])
@@ -435,6 +451,87 @@ def buscar_movimiento(factura):
         """
     
     return debug_info
+
+@app.route('/seguridad_social', methods=['GET', 'POST'])
+@login_required
+def seguridad_social():
+    """Informe 521 Seguridad Social - Suma de cuentas de seguridad social a cargo de empresa y empleado"""
+    # Calcular fechas por defecto (mes actual)
+    hoy = datetime.today()
+    fecha_inicio = hoy.replace(day=1).strftime('%Y-%m-%d')
+    fecha_fin = hoy.strftime('%Y-%m-%d')
+    
+    total_seguridad_social = 0
+    detalle_seguridad_social = []
+    
+    if request.method == 'POST':
+        fecha_inicio = request.form['fecha_inicio']
+        fecha_fin = request.form['fecha_fin']
+        
+        # Convertir fechas para filtro
+        fecha_inicio_dt, fecha_fin_dt = convertir_fechas_para_filtro(fecha_inicio, fecha_fin)
+        
+        # Buscar conceptos de seguridad social en el rango de fechas
+        Contrapartida = db.aliased(Cuenta)
+        conceptos = db.session.query(MovimientoConcepto, Movimiento, Cuenta, Contrapartida)\
+            .join(Movimiento)\
+            .join(Cuenta, MovimientoConcepto.cuenta_id == Cuenta.id)\
+            .outerjoin(Contrapartida, MovimientoConcepto.contrapartida_id == Contrapartida.id)\
+            .filter(
+                db.or_(
+                    Cuenta.cuenta.like('521%'),  # Cuentas que empiecen por 521
+                    Cuenta.nombre.ilike('%seguridad social%'),
+                    Cuenta.nombre.ilike('%seguridad_social%'),
+                    Cuenta.nombre.ilike('%ss%')
+                )
+            )\
+            .filter(
+                db.and_(
+                    Movimiento.fecha_factura >= fecha_inicio,
+                    Movimiento.fecha_factura <= fecha_fin
+                )
+            )\
+            .all()
+        
+        # Agrupar por cuenta y sumar importes
+        cuentas_agrupadas = {}
+        for c in conceptos:
+            cuenta_key = f"{c.Cuenta.cuenta} - {c.Cuenta.nombre}"
+            if cuenta_key not in cuentas_agrupadas:
+                cuentas_agrupadas[cuenta_key] = {
+                    'cuenta': c.Cuenta.cuenta,
+                    'nombre': c.Cuenta.nombre,
+                    'total': 0,
+                    'movimientos': []
+                }
+            cuentas_agrupadas[cuenta_key]['total'] += c.MovimientoConcepto.importe
+            # Obtener información de la contrapartida
+            contrapartida_info = ""
+            if len(c) > 3 and c[3]:  # c[3] es el alias Contrapartida
+                contrapartida_info = f"{c[3].cuenta} - {c[3].nombre}"
+            elif c.MovimientoConcepto.concepto:
+                contrapartida_info = c.MovimientoConcepto.concepto
+            
+            cuentas_agrupadas[cuenta_key]['movimientos'].append({
+                'fecha': c.Movimiento.fecha_factura,
+                'importe': c.MovimientoConcepto.importe,
+                'concepto': contrapartida_info
+            })
+        
+        # Convertir a lista ordenada
+        detalle_seguridad_social = []
+        for cuenta_key, datos in cuentas_agrupadas.items():
+            detalle_seguridad_social.append(datos)
+            total_seguridad_social += datos['total']
+        
+        # Ordenar por número de cuenta
+        detalle_seguridad_social.sort(key=lambda x: x['cuenta'])
+    
+    return render_template('seguridad_social.html',
+                         fecha_inicio=fecha_inicio,
+                         fecha_fin=fecha_fin,
+                         total_seguridad_social=total_seguridad_social,
+                         detalle_seguridad_social=detalle_seguridad_social)
 
 @app.route('/resultado_explotacion', methods=['GET', 'POST'])
 def resultado_explotacion():
@@ -1472,6 +1569,11 @@ def dateinput(value):
         pass
     return value
 
+@app.template_filter('limpiar_empleado')
+def limpiar_empleado_filter(nombre):
+    """Filtro de Jinja2 para limpiar nombres de empleados"""
+    return limpiar_nombre_empleado(nombre)
+
 def convertir_fechas_para_filtro(fecha_inicio, fecha_fin):
     """
     Convierte fechas de YYYY-MM-DD a objetos datetime para usar en filtros de base de datos
@@ -1479,6 +1581,61 @@ def convertir_fechas_para_filtro(fecha_inicio, fecha_fin):
     fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
     fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
     return fecha_inicio_dt, fecha_fin_dt
+
+def ejecutar_con_reintentos(funcion_db, max_reintentos=3, delay=0.1):
+    """
+    Ejecuta una función de base de datos con reintentos en caso de bloqueo
+    """
+    import time
+    import random
+    
+    for intento in range(max_reintentos):
+        try:
+            return funcion_db()
+        except Exception as e:
+            if "database is locked" in str(e) and intento < max_reintentos - 1:
+                # Esperar un tiempo aleatorio antes del siguiente intento
+                tiempo_espera = delay * (2 ** intento) + random.uniform(0, 0.1)
+                time.sleep(tiempo_espera)
+                continue
+            else:
+                raise e
+    
+    return None
+
+def commit_con_reintentos():
+    """
+    Hace commit de la sesión con reintentos en caso de bloqueo
+    """
+    def _commit():
+        db.session.commit()
+        return True
+    
+    try:
+        ejecutar_con_reintentos(_commit)
+        return True
+    except Exception as e:
+        db.session.rollback()
+        raise e
+
+def limpiar_nombre_empleado(nombre):
+    """Limpia el nombre del empleado quitando prefijos y DNI"""
+    if not nombre:
+        return nombre
+    
+    # Quitar prefijos comunes
+    nombre_limpio = nombre.replace('EMP ', '').replace('emp ', '').replace('Emp ', '')
+    
+    # Quitar DNI (patrón: números seguidos de letra o solo números)
+    import re
+    # Patrón para DNI español (8 números + letra o solo números)
+    dni_pattern = r'\b\d{8}[A-Z]?\b|\b\d{9}\b'
+    nombre_limpio = re.sub(dni_pattern, '', nombre_limpio)
+    
+    # Limpiar espacios extra
+    nombre_limpio = ' '.join(nombre_limpio.split())
+    
+    return nombre_limpio.strip()
 
 def parsear_fecha_robusto(fecha_str):
     """
@@ -1662,7 +1819,7 @@ def generar_todas_nominas():
         
         # Crear movimiento principal
         # Añadir el nombre del empleado al número de factura para evitar confusión
-        num_factura_empleado = f"{general_config['num_factura']} - {empleado.nombre}"
+        num_factura_empleado = f"{general_config['num_factura']} - {limpiar_nombre_empleado(empleado.nombre)}"
         movimiento = Movimiento(
             tipo='Gasto',
             fecha_trabajo=general_config['fecha_trabajo'],
@@ -1816,7 +1973,7 @@ def guardar_config_empleado(empleado_id):
         'dietas': float(request.form['dietas'])
     }
     
-    flash(f'Configuración de {empleado.nombre} guardada correctamente.', 'success')
+    flash(f'Configuración de {limpiar_nombre_empleado(empleado.nombre)} guardada correctamente.', 'success')
     return redirect(url_for('ver_todas_nominas'))
 
 # ==================== CONTROL DE GASOIL ====================
@@ -2263,6 +2420,7 @@ def analisis_gasoil():
                         'total_kms': total_kms,
                         'total_facturacion': total_facturacion,
                         'precio_por_litro': precio_por_litro,
+                        'precio_por_litro_bonificacion': precio_por_litro_bonificacion,
                         'consumo_por_100km': consumo_por_100km,
                         'precio_cobrado_por_km': precio_cobrado_por_km,
                         'precio_cobrado_por_km_limpio': precio_cobrado_por_km_limpio,
@@ -2314,6 +2472,7 @@ def analisis_gasoil():
                 
                 # Calcular precios y variaciones
                 precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
+                precio_por_litro_bonificacion = (total_gasto - total_dif_hvo - total_recargo) / total_litros if total_litros > 0 else 0
                 consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
                 precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
                 precio_cobrado_por_km_limpio = total_facturacion_base / total_kms if total_kms > 0 else 0
@@ -2329,6 +2488,7 @@ def analisis_gasoil():
                     'total_kms': total_kms,
                     'total_facturacion': total_facturacion,
                     'precio_por_litro': precio_por_litro,
+                    'precio_por_litro_bonificacion': precio_por_litro_bonificacion,
                     'consumo_por_100km': consumo_por_100km,
                     'precio_cobrado_por_km': precio_cobrado_por_km,
                     'precio_cobrado_por_km_limpio': precio_cobrado_por_km_limpio,
@@ -2420,6 +2580,7 @@ def analisis_gasoil_pdf():
                         'total_kms': total_kms,
                         'total_facturacion': total_facturacion,
                         'precio_por_litro': precio_por_litro,
+                        'precio_por_litro_bonificacion': precio_por_litro_bonificacion,
                         'consumo_por_100km': consumo_por_100km,
                         'precio_cobrado_por_km': precio_cobrado_por_km,
                         'precio_cobrado_por_km_limpio': precio_cobrado_por_km_limpio,
@@ -2471,6 +2632,7 @@ def analisis_gasoil_pdf():
                 
                 # Calcular precios y variaciones
                 precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
+                precio_por_litro_bonificacion = (total_gasto - total_dif_hvo - total_recargo) / total_litros if total_litros > 0 else 0
                 consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
                 precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
                 precio_cobrado_por_km_limpio = total_facturacion_base / total_kms if total_kms > 0 else 0
@@ -2485,6 +2647,7 @@ def analisis_gasoil_pdf():
                     'total_kms': total_kms,
                     'total_facturacion': total_facturacion,
                     'precio_por_litro': precio_por_litro,
+                    'precio_por_litro_bonificacion': precio_por_litro_bonificacion,
                     'consumo_por_100km': consumo_por_100km,
                     'precio_cobrado_por_km': precio_cobrado_por_km,
                     'precio_cobrado_por_km_limpio': precio_cobrado_por_km_limpio,
@@ -2539,11 +2702,11 @@ def analisis_gasoil_pdf():
         headers = []
         if vehiculo_id and not acumulado:
             headers = ['Mes', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 
-                      'Precio por\nLitro (€)', 'Consumo\n(L/100km)', 'Total\nCobrado\nCompleto (€)', 
+                      'Precio por\nLitro (€)', 'Precio por\nLitro con\nBonificación (€)', 'Consumo\n(L/100km)', 'Total\nCobrado\nCompleto (€)', 
                       'Precio Cobrado\npor Km\nLimpio (€)', 'Precio Cobrado\npor Km (€)', 'Precio Pagado\npor Km (€)', 'Variación\n(€)', '%\nGasto\nGasoil']
         else:
             headers = ['Matrícula', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 
-                      'Precio por\nLitro (€)', 'Consumo\n(L/100km)', 'Total\nCobrado\nCompleto (€)', 
+                      'Precio por\nLitro (€)', 'Precio por\nLitro con\nBonificación (€)', 'Consumo\n(L/100km)', 'Total\nCobrado\nCompleto (€)', 
                       'Precio Cobrado\npor Km\nLimpio (€)', 'Precio Cobrado\npor Km (€)', 'Precio Pagado\npor Km (€)', 'Variación\n(€)', '%\nGasto\nGasoil']
         
         # Datos de la tabla
@@ -2563,6 +2726,7 @@ def analisis_gasoil_pdf():
             f"{stats['total_litros']:.2f}",
             f"{stats['total_gasto']:.2f}",
             f"{stats['precio_por_litro']:.3f}",
+            f"{stats['precio_por_litro_bonificacion']:.3f}",
             f"{stats['consumo_por_100km']:.2f}",
             f"{stats['total_facturacion']:.2f}",
             f"{stats['precio_cobrado_por_km_limpio']:.3f}",
@@ -2582,44 +2746,28 @@ def analisis_gasoil_pdf():
         total_facturacion = sum(stats['total_facturacion'] for stats in estadisticas_vehiculos)
         total_facturacion_base = sum(stats['total_facturacion_base'] for stats in estadisticas_vehiculos)
         
-        # Fila de totales
-        totals_row = ['TOTALES']
+        # Fila de totales y medias combinada
+        num_vehiculos = len(estadisticas_vehiculos)
+        totals_row = ['TOTALES/MEDIAS']
         totals_row.extend([
-            f"{total_kms:.0f}",
-            f"{total_litros:.1f}",
-            f"{total_gasto:.2f}",
-            f"{total_gasto / total_litros:.3f}" if total_litros > 0 else "0.000",
-            f"{total_litros / total_kms * 100:.2f}" if total_kms > 0 else "0.00",
-            f"{total_facturacion:.2f}",
-            f"{total_facturacion_base / total_kms:.3f}" if total_kms > 0 else "0.000",
-            f"{total_facturacion / total_kms:.3f}" if total_kms > 0 else "0.000",
-            f"{total_gasto / total_kms:.3f}" if total_kms > 0 else "0.000",
-            f"{(total_facturacion / total_kms - total_gasto / total_kms):.3f}" if total_kms > 0 else "0.000",
-            f"{total_gasto / total_facturacion * 100:.1f}%" if total_facturacion > 0 else "0.0%"
+            f"{total_kms:.0f}",  # Total km
+            f"{total_litros:.1f}",  # Total litros
+            f"{total_gasto:.2f}",  # Total importe
+            f"{sum(stats['precio_por_litro'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",  # Media precio/litro
+            f"{sum(stats['precio_por_litro_bonificacion'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",  # Media precio/litro con bonificación
+            f"{sum(stats['consumo_por_100km'] for stats in estadisticas_vehiculos) / num_vehiculos:.2f}" if num_vehiculos > 0 else "0.00",  # Media consumo
+            f"{total_facturacion:.2f}",  # Total facturación
+            f"{sum(stats['precio_cobrado_por_km_limpio'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",  # Media precio cobrado limpio
+            f"{sum(stats['precio_cobrado_por_km'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",  # Media precio cobrado
+            f"{sum(stats['precio_pagado_por_km'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",  # Media precio pagado
+            f"{sum(stats['variacion_precio'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",  # Media variación
+            f"{sum(stats['porcentaje_gasoil'] for stats in estadisticas_vehiculos) / num_vehiculos:.1f}%" if num_vehiculos > 0 else "0.0%"  # Media porcentaje
         ])
         data.append(totals_row)
-        
-        # Fila de medias
-        num_vehiculos = len(estadisticas_vehiculos)
-        averages_row = ['MEDIAS']
-        averages_row.extend([
-            f"{total_kms / num_vehiculos:.0f}" if num_vehiculos > 0 else "0",
-            f"{total_litros / num_vehiculos:.1f}" if num_vehiculos > 0 else "0.0",
-            f"{total_gasto / num_vehiculos:.2f}" if num_vehiculos > 0 else "0.00",
-            f"{sum(stats['precio_por_litro'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",
-            f"{sum(stats['consumo_por_100km'] for stats in estadisticas_vehiculos) / num_vehiculos:.2f}" if num_vehiculos > 0 else "0.00",
-            f"{total_facturacion / num_vehiculos:.2f}" if num_vehiculos > 0 else "0.00",
-            f"{sum(stats['precio_cobrado_por_km_limpio'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",
-            f"{sum(stats['precio_cobrado_por_km'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",
-            f"{sum(stats['precio_pagado_por_km'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",
-            f"{sum(stats['variacion_precio'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",
-            f"{sum(stats['porcentaje_gasoil'] for stats in estadisticas_vehiculos) / num_vehiculos:.1f}%" if num_vehiculos > 0 else "0.0%"
-        ])
-        data.append(averages_row)
     
     # Crear tabla con anchos optimizados para formato horizontal
-    table = Table(data, colWidths=[0.9*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 
-                                    0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.6*inch])
+    table = Table(data, colWidths=[0.9*inch, 0.6*inch, 0.6*inch, 0.6*inch, 0.6*inch, 
+                                    0.6*inch, 0.6*inch, 0.6*inch, 0.6*inch, 0.6*inch, 0.6*inch, 0.6*inch, 0.5*inch])
     
     # Estilo de la tabla optimizado para formato horizontal con encabezados de dos líneas
     table_style = TableStyle([
@@ -2638,20 +2786,14 @@ def analisis_gasoil_pdf():
         ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
     ])
     
-    # Añadir estilos para las filas de totales y medias si existen
+    # Añadir estilos para la fila de totales y medias si existen
     if estadisticas_vehiculos:
         num_data_rows = len(estadisticas_vehiculos)
-        # Fila de totales (penúltima fila)
+        # Fila de totales/medias (última fila)
         totals_row_idx = num_data_rows + 1
         table_style.add('BACKGROUND', (0, totals_row_idx), (-1, totals_row_idx), colors.lightgrey)
         table_style.add('FONTNAME', (0, totals_row_idx), (-1, totals_row_idx), 'Helvetica-Bold')
         table_style.add('FONTSIZE', (0, totals_row_idx), (-1, totals_row_idx), 6)
-        
-        # Fila de medias (última fila)
-        averages_row_idx = num_data_rows + 2
-        table_style.add('BACKGROUND', (0, averages_row_idx), (-1, averages_row_idx), colors.lightblue)
-        table_style.add('FONTNAME', (0, averages_row_idx), (-1, averages_row_idx), 'Helvetica-Bold')
-        table_style.add('FONTSIZE', (0, averages_row_idx), (-1, averages_row_idx), 6)
     
     table.setStyle(table_style)
     story.append(table)
