@@ -653,7 +653,7 @@ def resultado_explotacion():
         suma_resto = sum(d['importe'] for d in detalle if not str(d['cuenta']).startswith('7'))
         resultado = suma_7
         diferencia = suma_resto  # Gastos fijos (todas las cuentas que no son 7)
-        resultado_explotacion = suma_705 - suma_resto
+        resultado_explotacion = suma_7 - suma_resto
         
         # Calcular importes de las cuentas del resultado neto y agregarlas al detalle
         suma_resultado_neto = 0
@@ -696,7 +696,12 @@ def resultado_explotacion():
         
         # Calcular resultado neto
         resultado_neto = resultado_explotacion + suma_resultado_neto
-    return render_template('resultado_explotacion.html', resultado=resultado, detalle=detalle, diferencia=diferencia, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, resultado_explotacion=resultado_explotacion, suma_resultado_neto=suma_resultado_neto, resultado_neto=resultado_neto, detalle_resultado_neto=detalle_resultado_neto)
+    
+    # Formatear fechas para mostrar (siempre)
+    fecha_inicio_formateada = datetime.strptime(fecha_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
+    fecha_fin_formateada = datetime.strptime(fecha_fin, '%Y-%m-%d').strftime('%d/%m/%Y')
+    
+    return render_template('resultado_explotacion.html', resultado=resultado, detalle=detalle, diferencia=diferencia, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, fecha_inicio_formateada=fecha_inicio_formateada, fecha_fin_formateada=fecha_fin_formateada, resultado_explotacion=resultado_explotacion, suma_resultado_neto=suma_resultado_neto, resultado_neto=resultado_neto, detalle_resultado_neto=detalle_resultado_neto)
 
 @app.route('/iva', methods=['GET', 'POST'])
 def resultado_iva():
@@ -2821,6 +2826,89 @@ def analisis_gasoil_pdf():
         download_name=filename,
         mimetype='application/pdf'
     )
+
+@app.route('/modelo_123', methods=['GET', 'POST'])
+def modelo_123():
+    """Modelo 123 - Rendimientos del capital - Cuenta 47300000001"""
+    resultado = None
+    detalle = []
+    total_importe = 0
+    # Calcular fechas por defecto
+    hoy = datetime.today()
+    mes = hoy.month
+    if mes <= 3:
+        inicio_trimestre = datetime(hoy.year, 1, 1)
+    elif mes <= 6:
+        inicio_trimestre = datetime(hoy.year, 4, 1)
+    elif mes <= 9:
+        inicio_trimestre = datetime(hoy.year, 7, 1)
+    else:
+        inicio_trimestre = datetime(hoy.year, 10, 1)
+    fecha_inicio = inicio_trimestre.strftime('%Y-%m-%d')
+    fecha_fin = hoy.strftime('%Y-%m-%d')
+    
+    if request.method == 'POST':
+        fecha_inicio = request.form['fecha_inicio']
+        fecha_fin = request.form['fecha_fin']
+        # Convertir fechas de YYYY-MM-DD a objetos datetime para la comparación
+        fecha_inicio_dt, fecha_fin_dt = convertir_fechas_para_filtro(fecha_inicio, fecha_fin)
+        
+        # Buscar conceptos de la cuenta 47300000001 en ese rango de fechas
+        # Usar LIKE para evitar problemas con espacios
+        conceptos = db.session.query(MovimientoConcepto, Movimiento, Cuenta)\
+            .join(Movimiento)\
+            .join(Cuenta, MovimientoConcepto.cuenta_id == Cuenta.id)\
+            .filter(Cuenta.cuenta.like('47300000001%'))\
+            .all()
+        
+        # Filtrar por fecha usando comparación de datetime
+        conceptos_filtrados = []
+        for c in conceptos:
+            fecha_movimiento = parsear_fecha_robusto(c.Movimiento.fecha_factura)
+            if fecha_movimiento and fecha_inicio_dt <= fecha_movimiento <= fecha_fin_dt:
+                conceptos_filtrados.append(c)
+        
+        conceptos = conceptos_filtrados
+        
+        # Debug: imprimir información sobre los conceptos encontrados
+        print(f"Modelo 123 - Conceptos encontrados: {len(conceptos)}")
+        
+        # Agrupar y sumar importes por cuenta, incluyendo detalles de transacciones
+        detalle_dict = {}
+        for c in conceptos:
+            cuenta = str(c.Cuenta.cuenta)
+            key = cuenta
+            if key not in detalle_dict:
+                detalle_dict[key] = {
+                    'cuenta': cuenta,
+                    'nombre': c.Cuenta.nombre,
+                    'importe': 0,
+                    'transacciones': []
+                }
+            detalle_dict[key]['importe'] += c.MovimientoConcepto.importe
+            # Añadir detalles de la transacción
+            contrapartida_info = ""
+            if c.MovimientoConcepto.contrapartida:
+                contrapartida_info = f"{c.MovimientoConcepto.contrapartida.cuenta} - {c.MovimientoConcepto.contrapartida.nombre}"
+            else:
+                contrapartida_info = "Sin contrapartida"
+            
+            transaccion = {
+                'fecha': c.Movimiento.fecha_factura,
+                'contrapartida': contrapartida_info,
+                'importe': c.MovimientoConcepto.importe,
+                'concepto': c.MovimientoConcepto.concepto or "Sin concepto",
+                'num_factura': c.Movimiento.num_factura or "Sin número"
+            }
+            detalle_dict[key]['transacciones'].append(transaccion)
+        
+        detalle = list(detalle_dict.values())
+        # Ordenar por número de cuenta
+        detalle = sorted(detalle, key=lambda x: x['cuenta'])
+        total_importe = sum(d['importe'] for d in detalle)
+        resultado = total_importe
+    
+    return render_template('modelo_123.html', resultado=resultado, detalle=detalle, total_importe=total_importe, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
 
 # Función para migrar datos existentes de facturación de string a float
 def migrar_facturacion():
