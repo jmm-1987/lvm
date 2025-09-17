@@ -13,9 +13,17 @@
         button, .menu-btn { padding: 10px 24px; background: #fbc02d; color: #333; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; text-decoration:none; display:inline-block; }
         button:hover, .menu-btn:hover { background: #ffe082; }
         .resumen { background: #f7fafd; border-radius: 8px; padding: 18px 24px; margin-bottom: 24px; text-align: center; font-size: 1.2em; }
-        .iva-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
-        .iva-table th, .iva-table td { padding: 8px 10px; border-bottom: 1px solid #e0e0e0; text-align: left; }
-        .iva-table th { background: #e3eaf2; }
+        .iva-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 0.9em; }
+        .iva-table th, .iva-table td { padding: 8px 6px; border-bottom: 1px solid #e0e0e0; text-align: left; }
+        .iva-table th { background: #e3eaf2; font-weight: bold; }
+        .iva-table td { word-wrap: break-word; }
+        .iva-table th:nth-child(1), .iva-table td:nth-child(1) { width: 5%; text-align: center; } /* Checkbox */
+        .iva-table th:nth-child(2), .iva-table td:nth-child(2) { width: 12%; } /* Fecha */
+        .iva-table th:nth-child(3), .iva-table td:nth-child(3) { width: 15%; } /* Nº Factura */
+        .iva-table th:nth-child(4), .iva-table td:nth-child(4) { width: 25%; } /* Concepto */
+        .iva-table th:nth-child(5), .iva-table td:nth-child(5) { width: 20%; } /* Contrapartida */
+        .iva-table th:nth-child(6), .iva-table td:nth-child(6) { width: 13%; text-align: center; } /* Estado */
+        .iva-table th:nth-child(7), .iva-table td:nth-child(7) { width: 10%; text-align: right; } /* Importe */
         .diferencia { font-size: 1.3em; font-weight: bold; text-align: right; margin-top: 18px; }
         .negativo { color: #b71c1c; font-weight: bold; }
     </style>
@@ -27,8 +35,16 @@
             <label>Desde: <input type="date" name="fecha_inicio" required value="{{ fecha_inicio }}"></label>
             <label>Hasta: <input type="date" name="fecha_fin" required value="{{ fecha_fin }}"></label>
             <label style="font-weight:normal; margin-bottom:0; margin-left:10px; display:inline-flex; align-items:center;">
-                <input type="checkbox" name="desglose" value="1" {% if desglose_checked %}checked{% endif %} style="margin-right:5px;"> Mostrar desglose por cuentas de contrapartida
+                <input type="checkbox" name="desglose" value="1" {% if desglose_checked %}checked{% endif %} style="margin-right:5px;"> Mostrar desglose por movimientos individuales
             </label>
+            <label style="font-weight:bold; margin-left:15px;">Filtro declarado:</label>
+            <select name="filtro_declarado" style="padding:8px; border-radius:5px; border:1px solid #b0bec5; margin:0 10px;">
+                <option value="todos" {% if filtro_declarado == 'todos' %}selected{% endif %}>Todos</option>
+                <option value="declarados" {% if filtro_declarado == 'declarados' %}selected{% endif %}>Solo declarados</option>
+                <option value="no_declarados" {% if filtro_declarado == 'no_declarados' %}selected{% endif %}>Solo no declarados</option>
+            </select>
+            <label style="font-weight:bold; margin-left:10px;">Trimestre:</label>
+            <input type="text" name="trimestre_filtro" placeholder="ej: 2025Q3" value="{{ trimestre_filtro }}" style="padding:8px; border-radius:5px; border:1px solid #b0bec5; margin:0 10px; width:100px;">
             <button type="submit">Ver resultado</button>
             <a href="/" class="menu-btn" style="background:#e53935; color:#fff; text-decoration:none; padding:10px 24px; border-radius:6px; display:inline-block; border:none; font-size:1em;">Volver al inicio</a>
         </form>
@@ -53,36 +69,352 @@
                     <td>{{ '%.2f'|format(iva_soportado) if iva_soportado != 0 else '' }}{% if iva_soportado != 0 %} €{% endif %}</td>
                 </tr>
             </table>
-            <div class="diferencia" style="font-size:1.5em; color:#1976d2; margin-top:30px;">
-                IVA a pagar/cobrar: <span class="{% if resultado < 0 %}negativo{% endif %}">{{ '%.2f'|format(resultado) }} €</span>
-            </div>
             {% if desglose_contrapartidas %}
-            <div class="resumen" style="margin-top:40px;">
-                <span>Desglose por cuentas de contrapartida:</span>
+            <!-- Controles de declaración -->
+            <div style="margin-top:40px; padding:20px; background:#f5f5f5; border-radius:8px; text-align:center;">
+                <h3 style="margin-top:0; color:#333;">Control de Declaración IVA</h3>
+                <div style="display:flex; justify-content:center; align-items:center; gap:15px; flex-wrap:wrap; margin-bottom:15px;">
+                    <button type="button" id="seleccionar-todos" style="padding:8px 16px; background:#2196f3; color:white; border:none; border-radius:4px; cursor:pointer;">Seleccionar Todos</button>
+                    <button type="button" id="deseleccionar-todos" style="padding:8px 16px; background:#757575; color:white; border:none; border-radius:4px; cursor:pointer;">Deseleccionar Todos</button>
+                    <button type="button" id="seleccionar-no-declarados" style="padding:8px 16px; background:#ff9800; color:white; border:none; border-radius:4px; cursor:pointer;">Solo No Declarados</button>
+                </div>
+                <div style="display:flex; justify-content:center; align-items:center; gap:15px; flex-wrap:wrap;">
+                    <input type="text" id="trimestre-input" placeholder="Trimestre (ej: 2025Q3)" style="padding:8px; border:1px solid #ccc; border-radius:4px; width:150px;">
+                    <button type="button" id="marcar-declarados" style="padding:10px 20px; background:#4caf50; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">✅ Marcar como Declarados</button>
+                    <button type="button" id="cancelar-declarados" style="padding:10px 20px; background:#f44336; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">❌ Cancelar Declaraciones</button>
+                </div>
+                <div id="mensaje-operacion" style="margin-top:10px; font-weight:bold;"></div>
+                <!-- Resultado en tiempo real -->
+                <div id="resultado-tiempo-real" style="margin-top:15px; padding:15px; background:#fff3e0; border:2px solid #ff9800; border-radius:8px; display:none;">
+                    <h4 style="margin:0 0 10px 0; color:#e65100;">📊 Resultado IVA de Movimientos Seleccionados</h4>
+                    <div style="display:flex; justify-content:space-around; align-items:center; flex-wrap:wrap;">
+                        <div style="text-align:center;">
+                            <div style="font-size:0.9em; color:#666;">IVA Repercutido Seleccionado</div>
+                            <div id="total-repercutido-seleccionado" style="font-size:1.3em; font-weight:bold; color:#2e7d32;">0.00 €</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:0.9em; color:#666;">IVA Soportado Seleccionado</div>
+                            <div id="total-soportado-seleccionado" style="font-size:1.3em; font-weight:bold; color:#1976d2;">0.00 €</div>
+                        </div>
+                        <div style="text-align:center; border-left:2px solid #ccc; padding-left:20px;">
+                            <div style="font-size:0.9em; color:#666;">Resultado Seleccionado</div>
+                            <div id="resultado-seleccionado" style="font-size:1.5em; font-weight:bold; color:#1976d2;">0.00 €</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px; font-size:0.9em; color:#666; text-align:center;">
+                        <span id="contador-movimientos">0 movimientos</span> seleccionados
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tabla IVA Repercutido -->
+            <div class="resumen" style="margin-top:30px; background:#e8f5e8;">
+                <span style="color:#2e7d32; font-weight:bold;">IVA REPERCUTIDO (47700000001)</span>
             </div>
             <table class="iva-table">
                 <tr>
+                    <th><input type="checkbox" id="select-all-repercutido" style="transform:scale(1.2);"></th>
+                    <th>Fecha</th>
+                    <th>Nº Factura</th>
+                    <th>Concepto</th>
                     <th>Contrapartida</th>
-                    <th>Nombre</th>
-                    <th>IVA Repercutido</th>
-                    <th>IVA Soportado</th>
+                    <th>Estado</th>
+                    <th>Importe</th>
                 </tr>
-                {% for c in desglose_contrapartidas %}
+                {% for m in desglose_contrapartidas.repercutido %}
                 <tr>
-                    <td>{{ c.contrapartida }}</td>
-                    <td>{{ c.nombre }}</td>
-                    <td>{{ '%.2f'|format(c.iva_repercutido) if c.iva_repercutido != 0 else '' }}{% if c.iva_repercutido != 0 %} €{% endif %}</td>
-                    <td>{{ '%.2f'|format(c.iva_soportado) if c.iva_soportado != 0 else '' }}{% if c.iva_soportado != 0 %} €{% endif %}</td>
+                    <td><input type="checkbox" class="movimiento-checkbox" data-id="{{ m.id }}" data-tipo="repercutido" data-importe="{{ m.importe }}" style="transform:scale(1.1);"></td>
+                    <td>{{ m.fecha }}</td>
+                    <td>{{ m.num_factura }}</td>
+                    <td>{{ m.concepto }}</td>
+                    <td>{{ m.contrapartida }}</td>
+                    <td style="text-align:center;">
+                        {% if m.declarado %}
+                            <span style="color:#2e7d32; font-weight:bold;">✅ {{ m.trimestre_declaracion or 'Declarado' }}</span>
+                        {% else %}
+                            <span style="color:#f57c00; font-weight:bold;">❌ No declarado</span>
+                        {% endif %}
+                    </td>
+                    <td style="color:#2e7d32; font-weight:bold;">{{ '%.2f'|format(m.importe) }} €</td>
                 </tr>
                 {% endfor %}
+                {% if desglose_contrapartidas.repercutido %}
                 <tr style="font-weight:bold; background:#e3eaf2;">
-                    <td colspan="2" style="text-align:right;">Total:</td>
-                    <td>{{ '%.2f'|format(total_repercutido) if total_repercutido != 0 else '' }}{% if total_repercutido != 0 %} €{% endif %}</td>
-                    <td>{{ '%.2f'|format(total_soportado) if total_soportado != 0 else '' }}{% if total_soportado != 0 %} €{% endif %}</td>
+                    <td colspan="6" style="text-align:right;">Total IVA Repercutido:</td>
+                    <td style="color:#2e7d32;">{{ '%.2f'|format(total_repercutido) if total_repercutido != 0 else '0.00' }} €</td>
                 </tr>
+                {% endif %}
+            </table>
+            
+            <!-- Tabla IVA Soportado -->
+            <div class="resumen" style="margin-top:30px; background:#e3f2fd;">
+                <span style="color:#1976d2; font-weight:bold;">IVA SOPORTADO (47200000001)</span>
+            </div>
+            <table class="iva-table">
+                <tr>
+                    <th><input type="checkbox" id="select-all-soportado" style="transform:scale(1.2);"></th>
+                    <th>Fecha</th>
+                    <th>Nº Factura</th>
+                    <th>Concepto</th>
+                    <th>Contrapartida</th>
+                    <th>Estado</th>
+                    <th>Importe</th>
+                </tr>
+                {% for m in desglose_contrapartidas.soportado %}
+                <tr>
+                    <td><input type="checkbox" class="movimiento-checkbox" data-id="{{ m.id }}" data-tipo="soportado" data-importe="{{ m.importe }}" style="transform:scale(1.1);"></td>
+                    <td>{{ m.fecha }}</td>
+                    <td>{{ m.num_factura }}</td>
+                    <td>{{ m.concepto }}</td>
+                    <td>{{ m.contrapartida }}</td>
+                    <td style="text-align:center;">
+                        {% if m.declarado %}
+                            <span style="color:#2e7d32; font-weight:bold;">✅ {{ m.trimestre_declaracion or 'Declarado' }}</span>
+                        {% else %}
+                            <span style="color:#f57c00; font-weight:bold;">❌ No declarado</span>
+                        {% endif %}
+                    </td>
+                    <td style="color:#1976d2; font-weight:bold;">{{ '%.2f'|format(m.importe) }} €</td>
+                </tr>
+                {% endfor %}
+                {% if desglose_contrapartidas.soportado %}
+                <tr style="font-weight:bold; background:#e3eaf2;">
+                    <td colspan="6" style="text-align:right;">Total IVA Soportado:</td>
+                    <td style="color:#1976d2;">{{ '%.2f'|format(total_soportado) if total_soportado != 0 else '0.00' }} €</td>
+                </tr>
+                {% endif %}
             </table>
             {% endif %}
+            
+            <!-- Resultado del IVA al final -->
+            <div class="diferencia" style="font-size:1.5em; color:#1976d2; margin-top:40px; text-align:center; padding:20px; background:#f0f8ff; border-radius:8px;">
+                IVA a pagar/cobrar: <span class="{% if resultado < 0 %}negativo{% endif %}">{{ '%.2f'|format(resultado) }} €</span>
+            </div>
         {% endif %}
     </div>
+
+    <script>
+        // Funciones para manejar checkboxes
+        function toggleAllCheckboxes(tableId, checked) {
+            const checkboxes = document.querySelectorAll(`#${tableId} + table .movimiento-checkbox`);
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = checked;
+            });
+        }
+
+        function updateSelectAllCheckbox(tableId) {
+            const selectAllCheckbox = document.getElementById(`select-all-${tableId}`);
+            const checkboxes = document.querySelectorAll(`#select-all-${tableId} + table .movimiento-checkbox`);
+            const checkedCount = document.querySelectorAll(`#select-all-${tableId} + table .movimiento-checkbox:checked`).length;
+            
+            selectAllCheckbox.checked = checkedCount === checkboxes.length && checkboxes.length > 0;
+            selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+        }
+
+        function getSelectedMovements() {
+            const selectedCheckboxes = document.querySelectorAll('.movimiento-checkbox:checked');
+            return Array.from(selectedCheckboxes).map(checkbox => parseInt(checkbox.dataset.id));
+        }
+
+        function showMessage(message, isError = false) {
+            const messageDiv = document.getElementById('mensaje-operacion');
+            messageDiv.textContent = message;
+            messageDiv.style.color = isError ? '#d32f2f' : '#2e7d32';
+            messageDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                messageDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        function calcularResultadoTiempoReal() {
+            const selectedCheckboxes = document.querySelectorAll('.movimiento-checkbox:checked');
+            const resultadoDiv = document.getElementById('resultado-tiempo-real');
+            
+            if (selectedCheckboxes.length === 0) {
+                resultadoDiv.style.display = 'none';
+                return;
+            }
+            
+            let totalRepercutido = 0;
+            let totalSoportado = 0;
+            
+            selectedCheckboxes.forEach(checkbox => {
+                const importe = parseFloat(checkbox.dataset.importe);
+                const tipo = checkbox.dataset.tipo;
+                
+                if (tipo === 'repercutido') {
+                    totalRepercutido += importe;
+                } else if (tipo === 'soportado') {
+                    totalSoportado += importe;
+                }
+            });
+            
+            const resultado = totalRepercutido - totalSoportado;
+            
+            // Actualizar la interfaz
+            document.getElementById('total-repercutido-seleccionado').textContent = totalRepercutido.toFixed(2) + ' €';
+            document.getElementById('total-soportado-seleccionado').textContent = totalSoportado.toFixed(2) + ' €';
+            document.getElementById('resultado-seleccionado').textContent = resultado.toFixed(2) + ' €';
+            document.getElementById('contador-movimientos').textContent = selectedCheckboxes.length + ' movimientos';
+            
+            // Cambiar color según el resultado
+            const resultadoElement = document.getElementById('resultado-seleccionado');
+            if (resultado < 0) {
+                resultadoElement.style.color = '#d32f2f'; // Rojo para negativo
+            } else {
+                resultadoElement.style.color = '#1976d2'; // Azul para positivo
+            }
+            
+            // Mostrar el panel de resultado
+            resultadoDiv.style.display = 'block';
+        }
+
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Select all checkboxes
+            document.getElementById('select-all-repercutido').addEventListener('change', function() {
+                toggleAllCheckboxes('select-all-repercutido', this.checked);
+                calcularResultadoTiempoReal();
+            });
+
+            document.getElementById('select-all-soportado').addEventListener('change', function() {
+                toggleAllCheckboxes('select-all-soportado', this.checked);
+                calcularResultadoTiempoReal();
+            });
+
+            // Individual checkboxes
+            document.querySelectorAll('.movimiento-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    const tipo = this.dataset.tipo;
+                    updateSelectAllCheckbox(tipo);
+                    calcularResultadoTiempoReal();
+                });
+            });
+
+            // Selection buttons
+            document.getElementById('seleccionar-todos').addEventListener('click', function() {
+                document.querySelectorAll('.movimiento-checkbox').forEach(checkbox => {
+                    checkbox.checked = true;
+                });
+                document.getElementById('select-all-repercutido').checked = true;
+                document.getElementById('select-all-soportado').checked = true;
+                calcularResultadoTiempoReal();
+            });
+
+            document.getElementById('deseleccionar-todos').addEventListener('click', function() {
+                document.querySelectorAll('.movimiento-checkbox').forEach(checkbox => {
+                    checkbox.checked = false;
+                });
+                document.getElementById('select-all-repercutido').checked = false;
+                document.getElementById('select-all-soportado').checked = false;
+                calcularResultadoTiempoReal();
+            });
+
+            document.getElementById('seleccionar-no-declarados').addEventListener('click', function() {
+                document.querySelectorAll('.movimiento-checkbox').forEach(checkbox => {
+                    checkbox.checked = false;
+                });
+                
+                // Solo seleccionar los no declarados
+                document.querySelectorAll('.movimiento-checkbox').forEach(checkbox => {
+                    const row = checkbox.closest('tr');
+                    const estadoCell = row.querySelector('td:nth-child(6)');
+                    if (estadoCell && estadoCell.textContent.includes('❌')) {
+                        checkbox.checked = true;
+                    }
+                });
+                
+                updateSelectAllCheckbox('repercutido');
+                updateSelectAllCheckbox('soportado');
+                calcularResultadoTiempoReal();
+            });
+
+            // Mark as declared button
+            document.getElementById('marcar-declarados').addEventListener('click', function() {
+                const selectedIds = getSelectedMovements();
+                const trimestre = document.getElementById('trimestre-input').value.trim();
+                
+                if (selectedIds.length === 0) {
+                    showMessage('Por favor selecciona al menos un movimiento', true);
+                    return;
+                }
+                
+                if (!trimestre) {
+                    showMessage('Por favor ingresa un trimestre (ej: 2025Q3)', true);
+                    return;
+                }
+
+                // Validar formato de trimestre
+                if (!/^\d{4}Q[1-4]$/.test(trimestre)) {
+                    showMessage('Formato de trimestre inválido. Usa el formato YYYYQ (ej: 2025Q3)', true);
+                    return;
+                }
+
+                if (confirm(`¿Marcar ${selectedIds.length} movimientos como declarados en ${trimestre}?`)) {
+                    fetch('/marcar_declarado', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            concepto_ids: selectedIds,
+                            trimestre: trimestre
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showMessage(data.message);
+                            setTimeout(() => {
+                                location.reload();
+                            }, 1500);
+                        } else {
+                            showMessage(data.message, true);
+                        }
+                    })
+                    .catch(error => {
+                        showMessage('Error al marcar movimientos: ' + error.message, true);
+                    });
+                }
+            });
+
+            // Cancel declarations button
+            document.getElementById('cancelar-declarados').addEventListener('click', function() {
+                const selectedIds = getSelectedMovements();
+                
+                if (selectedIds.length === 0) {
+                    showMessage('Por favor selecciona al menos un movimiento', true);
+                    return;
+                }
+
+                if (confirm(`¿Cancelar la declaración de ${selectedIds.length} movimientos?`)) {
+                    fetch('/cancelar_declarado', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            concepto_ids: selectedIds
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showMessage(data.message);
+                            setTimeout(() => {
+                                location.reload();
+                            }, 1500);
+                        } else {
+                            showMessage(data.message, true);
+                        }
+                    })
+                    .catch(error => {
+                        showMessage('Error al cancelar declaraciones: ' + error.message, true);
+                    });
+                }
+            });
+        });
+    </script>
 </body>
 </html> 

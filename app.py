@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, Response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -63,6 +63,10 @@ class MovimientoConcepto(db.Model):
     importe = db.Column(db.Float, nullable=False)
     concepto = db.Column(db.String(100), nullable=True)
     contrapartida_id = db.Column(db.Integer, db.ForeignKey('cuenta.id'), nullable=True) # Nuevo campo para la contrapartida
+    
+    # Campos para control de declaración IVA
+    declarado = db.Column(db.Boolean, nullable=False, default=False) # Marca si ha sido declarado
+    trimestre_declaracion = db.Column(db.String(20), nullable=True) # Trimestre en que fue declarado (ej: "2025Q3")
     
     cuenta = db.relationship('Cuenta', foreign_keys=[cuenta_id])
     contrapartida = db.relationship('Cuenta', foreign_keys=[contrapartida_id]) # Relación con la cuenta de contrapartida
@@ -722,6 +726,8 @@ def resultado_iva():
     fecha_inicio = inicio_trimestre.strftime('%Y-%m-%d')
     fecha_fin = hoy.strftime('%Y-%m-%d')
     desglose_checked = False
+    filtro_declarado = 'todos'  # 'todos', 'declarados', 'no_declarados'
+    trimestre_filtro = ''
     desglose_contrapartidas = []
     total_repercutido = 0
     total_soportado = 0
@@ -729,6 +735,8 @@ def resultado_iva():
         fecha_inicio = request.form['fecha_inicio']
         fecha_fin = request.form['fecha_fin']
         desglose_checked = 'desglose' in request.form
+        filtro_declarado = request.form.get('filtro_declarado', 'todos')
+        trimestre_filtro = request.form.get('trimestre_filtro', '')
         # Convertir fechas de YYYY-MM-DD a objetos datetime para la comparación
         fecha_inicio_dt, fecha_fin_dt = convertir_fechas_para_filtro(fecha_inicio, fecha_fin)
         
@@ -739,11 +747,21 @@ def resultado_iva():
                 Cuenta.cuenta.in_(['47700000001', '47200000001'])
             ).all()
         
-        # Filtrar por fecha usando comparación de datetime
+        # Filtrar por fecha y declarado usando comparación de datetime
         conceptos_filtrados = []
         for c in conceptos:
             fecha_movimiento = parsear_fecha_robusto(c.Movimiento.fecha_factura)
             if fecha_movimiento and fecha_inicio_dt <= fecha_movimiento <= fecha_fin_dt:
+                # Aplicar filtro de declarado
+                if filtro_declarado == 'declarados' and not c.MovimientoConcepto.declarado:
+                    continue
+                elif filtro_declarado == 'no_declarados' and c.MovimientoConcepto.declarado:
+                    continue
+                
+                # Aplicar filtro de trimestre si se especifica
+                if trimestre_filtro and c.MovimientoConcepto.trimestre_declaracion != trimestre_filtro:
+                    continue
+                
                 conceptos_filtrados.append(c)
         
         conceptos = conceptos_filtrados
@@ -753,31 +771,105 @@ def resultado_iva():
             elif str(c.Cuenta.cuenta).strip() == '47200000001':
                 iva_soportado += c.MovimientoConcepto.importe
         resultado = iva_repercutido - iva_soportado
-        # Desglose por contrapartida
+        # Desglose por movimientos individuales separados
         if desglose_checked:
-            desglose_dict = {}
+            movimientos_repercutido = []
+            movimientos_soportado = []
+            
             for c in conceptos:
                 contrapartida = c.MovimientoConcepto.contrapartida
-                if not contrapartida:
-                    continue
-                key = contrapartida.cuenta
-                if key not in desglose_dict:
-                    desglose_dict[key] = {
-                        'contrapartida': contrapartida.cuenta,
-                        'nombre': contrapartida.nombre,
-                        'iva_repercutido': 0,
-                        'iva_soportado': 0
-                    }
+                contrapartida_info = "Sin contrapartida"
+                if contrapartida:
+                    contrapartida_info = f"{contrapartida.cuenta} - {contrapartida.nombre}"
+                
+                movimiento = {
+                    'id': c.MovimientoConcepto.id,
+                    'fecha': c.Movimiento.fecha_factura,
+                    'num_factura': c.Movimiento.num_factura or "Sin número",
+                    'concepto': c.MovimientoConcepto.concepto or "Sin concepto",
+                    'contrapartida': contrapartida_info,
+                    'importe': c.MovimientoConcepto.importe,
+                    'declarado': c.MovimientoConcepto.declarado,
+                    'trimestre_declaracion': c.MovimientoConcepto.trimestre_declaracion
+                }
+                
                 if str(c.Cuenta.cuenta).strip() == '47700000001':
-                    desglose_dict[key]['iva_repercutido'] += c.MovimientoConcepto.importe
+                    movimientos_repercutido.append(movimiento)
                 elif str(c.Cuenta.cuenta).strip() == '47200000001':
-                    desglose_dict[key]['iva_soportado'] += c.MovimientoConcepto.importe
-            # Filtrar solo las filas con algún valor distinto de 0
-            desglose_contrapartidas = [v for v in desglose_dict.values() if v['iva_repercutido'] != 0 or v['iva_soportado'] != 0]
+                    movimientos_soportado.append(movimiento)
+            
+            # Ordenar por fecha (más reciente primero)
+            movimientos_repercutido.sort(key=lambda x: x['fecha'], reverse=True)
+            movimientos_soportado.sort(key=lambda x: x['fecha'], reverse=True)
+            
+            # Reutilizamos las variables para compatibilidad con el template
+            desglose_contrapartidas = {
+                'repercutido': movimientos_repercutido,
+                'soportado': movimientos_soportado
+            }
             # Calcular los totales
-            total_repercutido = sum(v['iva_repercutido'] for v in desglose_contrapartidas)
-            total_soportado = sum(v['iva_soportado'] for v in desglose_contrapartidas)
-    return render_template('iva.html', resultado=resultado, iva_repercutido=iva_repercutido, iva_soportado=iva_soportado, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, desglose_checked=desglose_checked, desglose_contrapartidas=desglose_contrapartidas, total_repercutido=total_repercutido, total_soportado=total_soportado)
+            total_repercutido = sum(m['importe'] for m in movimientos_repercutido)
+            total_soportado = sum(m['importe'] for m in movimientos_soportado)
+    return render_template('iva.html', resultado=resultado, iva_repercutido=iva_repercutido, iva_soportado=iva_soportado, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, desglose_checked=desglose_checked, desglose_contrapartidas=desglose_contrapartidas, total_repercutido=total_repercutido, total_soportado=total_soportado, filtro_declarado=filtro_declarado, trimestre_filtro=trimestre_filtro)
+
+@app.route('/marcar_declarado', methods=['POST'])
+@login_required
+def marcar_declarado():
+    """Marcar movimientos de IVA como declarados"""
+    try:
+        data = request.get_json()
+        concepto_ids = data.get('concepto_ids', [])
+        trimestre = data.get('trimestre', '')
+        
+        if not concepto_ids or not trimestre:
+            return jsonify({'success': False, 'message': 'Faltan datos requeridos'}), 400
+        
+        # Verificar que el trimestre tenga formato correcto
+        if not trimestre or len(trimestre) < 6:
+            return jsonify({'success': False, 'message': 'Formato de trimestre inválido (ej: 2025Q3)'}), 400
+        
+        # Actualizar los movimientos
+        actualizados = 0
+        for concepto_id in concepto_ids:
+            concepto = MovimientoConcepto.query.get(concepto_id)
+            if concepto:
+                concepto.declarado = True
+                concepto.trimestre_declaracion = trimestre
+                actualizados += 1
+        
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'{actualizados} movimientos marcados como declarados en {trimestre}'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+@app.route('/cancelar_declarado', methods=['POST'])
+@login_required
+def cancelar_declarado():
+    """Cancelar declaración de movimientos de IVA"""
+    try:
+        data = request.get_json()
+        concepto_ids = data.get('concepto_ids', [])
+        
+        if not concepto_ids:
+            return jsonify({'success': False, 'message': 'No se proporcionaron IDs de movimientos'}), 400
+        
+        # Actualizar los movimientos
+        actualizados = 0
+        for concepto_id in concepto_ids:
+            concepto = MovimientoConcepto.query.get(concepto_id)
+            if concepto and concepto.declarado:
+                concepto.declarado = False
+                concepto.trimestre_declaracion = None
+                actualizados += 1
+        
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'{actualizados} movimientos cancelados como declarados'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
 @app.route('/retencion_alquileres', methods=['GET', 'POST'])
 def retencion_alquileres():
@@ -2909,6 +3001,19 @@ def modelo_123():
         resultado = total_importe
     
     return render_template('modelo_123.html', resultado=resultado, detalle=detalle, total_importe=total_importe, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
+
+# Función para migrar la base de datos y agregar nuevos campos
+def migrar_base_datos():
+    """Migra la base de datos para agregar campos de declaración IVA"""
+    try:
+        # Crear las tablas si no existen (esto agregará los nuevos campos)
+        with app.app_context():
+            db.create_all()
+            print("✅ Migración completada: Campos de declaración IVA agregados")
+            return True
+    except Exception as e:
+        print(f"❌ Error en la migración: {str(e)}")
+        return False
 
 # Función para migrar datos existentes de facturación de string a float
 def migrar_facturacion():
