@@ -18,14 +18,31 @@
         .iva-table th { background: #e3eaf2; font-weight: bold; }
         .iva-table td { word-wrap: break-word; }
         .iva-table th:nth-child(1), .iva-table td:nth-child(1) { width: 5%; text-align: center; } /* Checkbox */
-        .iva-table th:nth-child(2), .iva-table td:nth-child(2) { width: 12%; } /* Fecha */
-        .iva-table th:nth-child(3), .iva-table td:nth-child(3) { width: 15%; } /* Nº Factura */
-        .iva-table th:nth-child(4), .iva-table td:nth-child(4) { width: 25%; } /* Concepto */
-        .iva-table th:nth-child(5), .iva-table td:nth-child(5) { width: 20%; } /* Contrapartida */
-        .iva-table th:nth-child(6), .iva-table td:nth-child(6) { width: 13%; text-align: center; } /* Estado */
-        .iva-table th:nth-child(7), .iva-table td:nth-child(7) { width: 10%; text-align: right; } /* Importe */
+        .iva-table th:nth-child(2), .iva-table td:nth-child(2) { width: 15%; } /* Fecha */
+        .iva-table th:nth-child(3), .iva-table td:nth-child(3) { width: 18%; } /* Nº Factura */
+        .iva-table th:nth-child(4), .iva-table td:nth-child(4) { width: 35%; } /* Contrapartida */
+        .iva-table th:nth-child(5), .iva-table td:nth-child(5) { width: 17%; text-align: center; } /* Estado */
+        .iva-table th:nth-child(6), .iva-table td:nth-child(6) { width: 10%; text-align: right; } /* Importe */
         .diferencia { font-size: 1.3em; font-weight: bold; text-align: right; margin-top: 18px; }
         .negativo { color: #b71c1c; font-weight: bold; }
+        
+        /* Modal styles */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: #fefefe; margin: 5% auto; padding: 20px; border: none; border-radius: 12px; width: 80%; max-width: 800px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e0e0e0; }
+        .modal-title { font-size: 1.4em; font-weight: bold; color: #1976d2; margin: 0; }
+        .close { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; transition: color 0.3s; }
+        .close:hover, .close:focus { color: #000; }
+        .modal-body { margin-bottom: 20px; }
+        .modal-field { display: flex; margin-bottom: 12px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+        .modal-field:last-child { border-bottom: none; }
+        .modal-label { font-weight: bold; color: #555; width: 180px; flex-shrink: 0; }
+        .modal-value { color: #333; flex: 1; word-wrap: break-word; }
+        .modal-footer { text-align: right; padding-top: 15px; border-top: 1px solid #e0e0e0; }
+        .btn-close { background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 0.9em; }
+        .btn-close:hover { background: #5a6268; }
+        .iva-table tr { cursor: pointer; transition: background-color 0.2s; }
+        .iva-table tr:hover { background-color: #f8f9fa; }
     </style>
 </head>
 <body>
@@ -116,17 +133,25 @@
                     <th><input type="checkbox" id="select-all-repercutido" style="transform:scale(1.2);"></th>
                     <th>Fecha</th>
                     <th>Nº Factura</th>
-                    <th>Concepto</th>
                     <th>Contrapartida</th>
                     <th>Estado</th>
                     <th>Importe</th>
                 </tr>
                 {% for m in desglose_contrapartidas.repercutido %}
-                <tr>
+                <tr class="movimiento-row" 
+                    data-id="{{ m.id }}" 
+                    data-movimiento-id="{{ m.movimiento_id }}" 
+                    data-fecha="{{ m.fecha }}" 
+                    data-num-factura="{{ m.num_factura }}" 
+                    data-concepto="{{ m.concepto or 'Sin concepto' }}" 
+                    data-contrapartida="{{ m.contrapartida }}" 
+                    data-importe="{{ m.importe }}" 
+                    data-declarado="{{ m.declarado }}" 
+                    data-trimestre="{{ m.trimestre_declaracion or '' }}"
+                    data-tipo="repercutido">
                     <td><input type="checkbox" class="movimiento-checkbox" data-id="{{ m.id }}" data-tipo="repercutido" data-importe="{{ m.importe }}" style="transform:scale(1.1);"></td>
                     <td>{{ m.fecha }}</td>
                     <td>{{ m.num_factura }}</td>
-                    <td>{{ m.concepto }}</td>
                     <td>{{ m.contrapartida }}</td>
                     <td style="text-align:center;">
                         {% if m.declarado %}
@@ -140,7 +165,7 @@
                 {% endfor %}
                 {% if desglose_contrapartidas.repercutido %}
                 <tr style="font-weight:bold; background:#e3eaf2;">
-                    <td colspan="6" style="text-align:right;">Total IVA Repercutido:</td>
+                    <td colspan="5" style="text-align:right;">Total IVA Repercutido:</td>
                     <td style="color:#2e7d32;">{{ '%.2f'|format(total_repercutido) if total_repercutido != 0 else '0.00' }} €</td>
                 </tr>
                 {% endif %}
@@ -155,17 +180,25 @@
                     <th><input type="checkbox" id="select-all-soportado" style="transform:scale(1.2);"></th>
                     <th>Fecha</th>
                     <th>Nº Factura</th>
-                    <th>Concepto</th>
                     <th>Contrapartida</th>
                     <th>Estado</th>
                     <th>Importe</th>
                 </tr>
                 {% for m in desglose_contrapartidas.soportado %}
-                <tr>
+                <tr class="movimiento-row" 
+                    data-id="{{ m.id }}" 
+                    data-movimiento-id="{{ m.movimiento_id }}" 
+                    data-fecha="{{ m.fecha }}" 
+                    data-num-factura="{{ m.num_factura }}" 
+                    data-concepto="{{ m.concepto or 'Sin concepto' }}" 
+                    data-contrapartida="{{ m.contrapartida }}" 
+                    data-importe="{{ m.importe }}" 
+                    data-declarado="{{ m.declarado }}" 
+                    data-trimestre="{{ m.trimestre_declaracion or '' }}"
+                    data-tipo="soportado">
                     <td><input type="checkbox" class="movimiento-checkbox" data-id="{{ m.id }}" data-tipo="soportado" data-importe="{{ m.importe }}" style="transform:scale(1.1);"></td>
                     <td>{{ m.fecha }}</td>
                     <td>{{ m.num_factura }}</td>
-                    <td>{{ m.concepto }}</td>
                     <td>{{ m.contrapartida }}</td>
                     <td style="text-align:center;">
                         {% if m.declarado %}
@@ -179,7 +212,7 @@
                 {% endfor %}
                 {% if desglose_contrapartidas.soportado %}
                 <tr style="font-weight:bold; background:#e3eaf2;">
-                    <td colspan="6" style="text-align:right;">Total IVA Soportado:</td>
+                    <td colspan="5" style="text-align:right;">Total IVA Soportado:</td>
                     <td style="color:#1976d2;">{{ '%.2f'|format(total_soportado) if total_soportado != 0 else '0.00' }} €</td>
                 </tr>
                 {% endif %}
@@ -270,8 +303,192 @@
             resultadoDiv.style.display = 'block';
         }
 
+        function openModal(movimientoData) {
+            const modal = document.getElementById('movimientoModal');
+            const modalBody = document.getElementById('modalBody');
+            
+            // Mostrar loading
+            modalBody.innerHTML = `
+                <div style="text-align: center; padding: 40px;">
+                    <div style="font-size: 1.2em; color: #666;">Cargando datos completos del movimiento...</div>
+                    <div style="margin-top: 10px; color: #999;">⏳ Por favor espera</div>
+                </div>
+            `;
+            modal.style.display = 'block';
+            
+            // Obtener datos completos del movimiento
+            fetch(`/obtener_movimiento_completo/${movimientoData.movimiento_id}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        mostrarMovimientoCompleto(data.movimiento);
+                    } else {
+                        modalBody.innerHTML = `
+                            <div style="text-align: center; padding: 40px; color: #d32f2f;">
+                                <div style="font-size: 1.2em;">❌ Error</div>
+                                <div style="margin-top: 10px;">${data.message}</div>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    modalBody.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: #d32f2f;">
+                            <div style="font-size: 1.2em;">❌ Error de conexión</div>
+                            <div style="margin-top: 10px;">No se pudieron cargar los datos</div>
+                        </div>
+                    `;
+                });
+        }
+
+        function mostrarMovimientoCompleto(movimiento) {
+            const modalBody = document.getElementById('modalBody');
+            
+            // Replicar exactamente la estructura del movimiento_form.html
+            let html = `
+                <div style="font-family: Arial, sans-serif; max-width: 100%;">
+                    <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
+                        <div style="flex: 1;">
+                            <label style="display: block; margin: 18px 0 8px 0; font-weight: bold;">Tipo:</label>
+                            <div style="padding: 10px; border: 1px solid #b0bec5; border-radius: 5px; background: #f8f9fa; font-size: 1em;">
+                                ${movimiento.tipo || 'Gasto'}
+                            </div>
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; margin: 18px 0 8px 0; font-weight: bold;">Fecha trabajo:</label>
+                            <div style="padding: 10px; border: 1px solid #b0bec5; border-radius: 5px; background: #f8f9fa; font-size: 1em;">
+                                ${movimiento.fecha_trabajo || 'Sin fecha'}
+                            </div>
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; margin: 18px 0 8px 0; font-weight: bold;">Fecha factura:</label>
+                            <div style="padding: 10px; border: 1px solid #b0bec5; border-radius: 5px; background: #f8f9fa; font-size: 1em;">
+                                ${movimiento.fecha_factura || 'Sin fecha'}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin: 18px 0 8px 0; font-weight: bold;">Num/factura:</label>
+                        <div style="padding: 10px; border: 1px solid #b0bec5; border-radius: 5px; background: #f8f9fa; font-size: 1em;">
+                            ${movimiento.num_factura || 'Sin número'}
+                        </div>
+                    </div>
+                    
+                    <!-- Tabla de conceptos exactamente como en movimiento_form.html -->
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                        <thead>
+                            <tr style="background: #e3eaf2;">
+                                <th style="padding: 8px; border-bottom: 1px solid #e0e0e0; text-align: left;">Cuenta</th>
+                                <th style="padding: 8px; border-bottom: 1px solid #e0e0e0; text-align: left;">Contrapartida</th>
+                                <th style="padding: 8px; border-bottom: 1px solid #e0e0e0; text-align: left; width: 110px;">Importe</th>
+                                <th style="padding: 8px; border-bottom: 1px solid #e0e0e0; text-align: left;">Concepto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            // Mostrar cada concepto exactamente como en el formulario
+            movimiento.conceptos.forEach((concepto, index) => {
+                const contrapartidaText = concepto.contrapartida ? 
+                    `${concepto.contrapartida.cuenta} - ${concepto.contrapartida.nombre}` : 
+                    'Sin contrapartida';
+                
+                // Destacar cuentas IVA con colores
+                const esIva = concepto.cuenta.cuenta === '47700000001' || concepto.cuenta.cuenta === '47200000001';
+                const rowStyle = esIva ? 'background: #fff3e0; border-left: 4px solid #ff9800;' : '';
+                
+                html += `
+                    <tr style="${rowStyle}">
+                        <td style="padding: 8px; border-bottom: 1px solid #e0e0e0; background: #f8f9fa; font-weight: bold;">
+                            ${concepto.cuenta.cuenta} - ${concepto.cuenta.nombre}
+                        </td>
+                        <td style="padding: 8px; border-bottom: 1px solid #e0e0e0;">
+                            ${contrapartidaText}
+                        </td>
+                        <td style="padding: 8px; border-bottom: 1px solid #e0e0e0; text-align: right; font-weight: bold; color: ${concepto.importe >= 0 ? '#2e7d32' : '#d32f2f'};">
+                            ${concepto.importe.toFixed(2)} €
+                        </td>
+                        <td style="padding: 8px; border-bottom: 1px solid #e0e0e0;">
+                            ${concepto.concepto || 'Sin concepto'}
+                            ${esIva ? `<br><small style="color: ${concepto.declarado ? '#2e7d32' : '#f57c00'};">
+                                ${concepto.declarado ? '✅ Declarado' : '❌ No declarado'}
+                                ${concepto.declarado && concepto.trimestre_declaracion ? ` (${concepto.trimestre_declaracion})` : ''}
+                            </small>` : ''}
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            // Calcular y mostrar el total
+            const total = movimiento.conceptos.reduce((sum, concepto) => sum + concepto.importe, 0);
+            
+            html += `
+                        </tbody>
+                    </table>
+                    
+                    <div style="font-size: 1.2em; font-weight: bold; margin-top: 20px; text-align: right; padding: 10px; background: #e3f2fd; border-radius: 5px;">
+                        Total: ${total.toFixed(2)} €
+                    </div>
+                </div>
+            `;
+            
+            modalBody.innerHTML = html;
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('movimientoModal');
+            modal.style.display = 'none';
+        }
+
         // Event listeners
         document.addEventListener('DOMContentLoaded', function() {
+            // Event listeners para el modal
+            const modal = document.getElementById('movimientoModal');
+            const closeBtn = document.querySelector('.close');
+            
+            // Cerrar modal al hacer click en la X
+            closeBtn.addEventListener('click', closeModal);
+            
+            // Cerrar modal al hacer click fuera del contenido
+            window.addEventListener('click', function(event) {
+                if (event.target === modal) {
+                    closeModal();
+                }
+            });
+            
+            // Cerrar modal con tecla ESC
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape' && modal.style.display === 'block') {
+                    closeModal();
+                }
+            });
+            
+            // Event listeners para las filas de la tabla
+            document.querySelectorAll('.movimiento-row').forEach(row => {
+                row.addEventListener('click', function(event) {
+                    // No abrir modal si se hace click en el checkbox
+                    if (event.target.type === 'checkbox') {
+                        return;
+                    }
+                    
+                    const movimientoData = {
+                        id: this.dataset.id,
+                        movimiento_id: this.dataset.movimientoId,
+                        fecha: this.dataset.fecha,
+                        num_factura: this.dataset.numFactura,
+                        concepto: this.dataset.concepto,
+                        contrapartida: this.dataset.contrapartida,
+                        importe: this.dataset.importe,
+                        declarado: this.dataset.declarado,
+                        trimestre: this.dataset.trimestre,
+                        tipo: this.dataset.tipo
+                    };
+                    
+                    openModal(movimientoData);
+                });
+            });
+            
             // Select all checkboxes
             document.getElementById('select-all-repercutido').addEventListener('change', function() {
                 toggleAllCheckboxes('select-all-repercutido', this.checked);
@@ -416,5 +633,21 @@
             });
         });
     </script>
+
+    <!-- Modal para mostrar detalles del movimiento -->
+    <div id="movimientoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">📋 Detalles del Movimiento</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Los datos se cargarán dinámicamente aquí -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn-close" onclick="closeModal()">Cerrar</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html> 

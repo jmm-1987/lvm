@@ -844,6 +844,61 @@ def marcar_declarado():
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
+@app.route('/obtener_movimiento_completo/<int:movimiento_id>')
+@login_required
+def obtener_movimiento_completo(movimiento_id):
+    try:
+        # Buscar el movimiento completo
+        movimiento = Movimiento.query.get(movimiento_id)
+        if not movimiento:
+            return jsonify({'success': False, 'message': 'Movimiento no encontrado'})
+        
+        # Obtener todos los conceptos del movimiento
+        conceptos = db.session.query(MovimientoConcepto, Cuenta)\
+            .join(Cuenta, MovimientoConcepto.cuenta_id == Cuenta.id)\
+            .filter(MovimientoConcepto.movimiento_id == movimiento_id)\
+            .all()
+        
+        # Estructurar los datos del movimiento (igual que en movimiento_form.html)
+        movimiento_data = {
+            'id': movimiento.id,
+            'tipo': getattr(movimiento, 'tipo', 'Gasto'),
+            'fecha_trabajo': str(movimiento.fecha_trabajo) if hasattr(movimiento, 'fecha_trabajo') and movimiento.fecha_trabajo else None,
+            'fecha_factura': str(movimiento.fecha_factura) if movimiento.fecha_factura else None,
+            'num_factura': movimiento.num_factura,
+            'conceptos': []
+        }
+        
+        # Agregar cada concepto del movimiento
+        for concepto, cuenta in conceptos:
+            contrapartida_info = None
+            if concepto.contrapartida:
+                contrapartida_info = {
+                    'id': concepto.contrapartida.id,
+                    'cuenta': concepto.contrapartida.cuenta,
+                    'nombre': concepto.contrapartida.nombre
+                }
+            
+            concepto_data = {
+                'id': concepto.id,
+                'cuenta': {
+                    'id': cuenta.id,
+                    'cuenta': cuenta.cuenta,
+                    'nombre': cuenta.nombre
+                },
+                'importe': concepto.importe,
+                'concepto': concepto.concepto,
+                'contrapartida': contrapartida_info,
+                'declarado': concepto.declarado,
+                'trimestre_declaracion': concepto.trimestre_declaracion
+            }
+            movimiento_data['conceptos'].append(concepto_data)
+        
+        return jsonify({'success': True, 'movimiento': movimiento_data})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error al obtener movimiento: {str(e)}'})
+
 @app.route('/cancelar_declarado', methods=['POST'])
 @login_required
 def cancelar_declarado():
