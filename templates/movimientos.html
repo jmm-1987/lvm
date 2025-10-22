@@ -75,33 +75,55 @@
         .volver-btn { background-color: #e53935 !important; color: #fff !important; }
         .volver-btn:hover { background-color: #b71c1c !important; }
         .filtro-input, .filtro-select {
-            padding: 8px 12px;
-            font-size: 1em;
+            padding: 4px 8px;
+            font-size: 0.85em;
             border: 1px solid #b0bec5;
-            border-radius: 5px;
+            border-radius: 4px;
             background: #fff;
             color: #333;
-            margin-right: 8px;
+            margin-right: 6px;
             margin-left: 2px;
+            height: 28px;
         }
         .filtro-label {
-            font-size: 1em;
+            font-size: 0.85em;
             color: #1976d2;
-            margin-left: 8px;
+            margin-left: 6px;
             margin-right: 2px;
+            font-weight: 500;
         }
         .tipo-mov.gasto { color: #d32f2f; font-weight: bold; }
         .tipo-mov.ingreso { color: #388e3c; font-weight: bold; }
     </style>
     <script>
+        function toggleFiltros() {
+            var tipoFiltro = document.getElementById('tipo_filtro').value;
+            var filtroTrimestre = document.getElementById('filtro-trimestre');
+            var filtroMes = document.getElementById('filtro-mes');
+            var filtroRango = document.getElementById('filtro-rango');
+            
+            // Ocultar todos los filtros
+            filtroTrimestre.style.display = 'none';
+            filtroMes.style.display = 'none';
+            filtroRango.style.display = 'none';
+            
+            // Mostrar el filtro correspondiente
+            if (tipoFiltro === 'trimestre') {
+                filtroTrimestre.style.display = 'flex';
+            } else if (tipoFiltro === 'mes') {
+                filtroMes.style.display = 'flex';
+            } else if (tipoFiltro === 'rango') {
+                filtroRango.style.display = 'flex';
+            }
+        }
+        
         function filtrarTabla() {
             var input = document.getElementById('busqueda');
             var filtro = input.value.toLowerCase();
-            var fechaDesde = document.getElementById('fecha_desde').value;
-            var fechaHasta = document.getElementById('fecha_hasta').value;
-            var tipoFiltro = document.getElementById('tipo_filtro').value;
+            var tipoMovimiento = document.getElementById('tipo_movimiento').value;
             var filas = document.querySelectorAll('#tabla-movimientos tbody tr');
             var totalVisibles = 0;
+            
             for (let i = 0; i < filas.length; i++) {
                 let fila = filas[i];
                 // Solo procesar filas principales (las que no tienen colspan)
@@ -112,21 +134,11 @@
                         texto += ' ' + filas[i + 1].textContent.toLowerCase();
                     }
                     var mostrar = texto.includes(filtro);
-                    // Filtrado por fecha
-                    var fechaFactura = fila.children[1].textContent.trim(); // dd/mm/aaaa
-                    if (fechaDesde) {
-                        var partes = fechaFactura.split('/');
-                        var fechaMov = partes[2] + '-' + partes[1] + '-' + partes[0];
-                        if (fechaMov < fechaDesde) mostrar = false;
-                    }
-                    if (fechaHasta) {
-                        var partes = fechaFactura.split('/');
-                        var fechaMov = partes[2] + '-' + partes[1] + '-' + partes[0];
-                        if (fechaMov > fechaHasta) mostrar = false;
-                    }
-                    // Filtrado por tipo
+                    
+                    // Filtrado por tipo de movimiento
                     var tipo = fila.children[0].textContent.trim();
-                    if (tipoFiltro && tipo !== tipoFiltro) mostrar = false;
+                    if (tipoMovimiento && tipo !== tipoMovimiento) mostrar = false;
+                    
                     fila.style.display = mostrar ? '' : 'none';
                     // Si la siguiente fila es de detalles (colspan), mostrarla solo si la principal está visible
                     if (i + 1 < filas.length && filas[i + 1].children.length === 1 && filas[i + 1].children[0].hasAttribute('colspan')) {
@@ -142,29 +154,151 @@
             // Actualizar el contador dinámicamente
             document.getElementById('contador-movimientos').textContent = totalVisibles;
         }
+        
+        // Inicializar los filtros al cargar la página
+        document.addEventListener('DOMContentLoaded', function() {
+            toggleFiltros();
+        });
     </script>
 </head>
 <body>
     <div class="container">
-        <form action="{{ url_for('guardar_cambios') }}" method="post" style="display:inline; float:right; margin-top:10px;">
-            <button type="submit" class="btn" style="background:#fbc02d; color:#333;">Guardar cambios</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <h1 style="margin: 0; font-size: 1.5em; color: #1976d2;">Listado de movimientos</h1>
+                <div style="font-size: 1em; color: #1976d2;">
+                    Total sistema: <strong>{{ total_movimientos_sistema }}</strong> | 
+                    Filtrados: <strong id="contador-movimientos">{{ movimientos|length }}</strong>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <a href="/movimientos/nuevo" class="menu-btn">Nuevo movimiento</a>
+                <a href="/" class="menu-btn volver-btn">Volver al inicio</a>
+                <form action="{{ url_for('guardar_cambios') }}" method="post" style="display:inline;">
+                    <button type="submit" class="btn" style="background:#fbc02d; color:#333;">Guardar cambios</button>
+                </form>
+            </div>
+        </div>
+        <!-- Nuevo sistema de filtros -->
+        <form method="post" style="background: #f8f9fa; padding: 8px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #e0e0e0;">
+            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;">
+                <label for="tipo_filtro" class="filtro-label" style="font-weight: bold; color: #1976d2;">Filtrar por:</label>
+                <select id="tipo_filtro" name="tipo_filtro" class="filtro-select" onchange="toggleFiltros()" style="min-width: 100px;">
+                    <option value="trimestre" {% if tipo_filtro == 'trimestre' %}selected{% endif %}>Trimestre</option>
+                    <option value="mes" {% if tipo_filtro == 'mes' %}selected{% endif %}>Mes</option>
+                    <option value="rango" {% if tipo_filtro == 'rango' %}selected{% endif %}>Rango de fechas</option>
+                </select>
+                
+                <label for="año" class="filtro-label">Año:</label>
+                <select id="año" name="año" class="filtro-select" style="min-width: 60px;">
+                    {% for año_opcion in range(2020, 2030) %}
+                        <option value="{{ año_opcion }}" {% if año == año_opcion|string %}selected{% endif %}>{{ año_opcion }}</option>
+                    {% endfor %}
+                </select>
+                
+                <!-- Filtro por trimestre -->
+                <div id="filtro-trimestre" style="display: {% if tipo_filtro == 'trimestre' %}flex{% else %}none{% endif %}; gap: 4px; align-items: center;">
+                    <label for="trimestre" class="filtro-label">Trimestre:</label>
+                    <select id="trimestre" name="trimestre" class="filtro-select" style="min-width: 80px;">
+                        <option value="Q1" {% if trimestre == 'Q1' %}selected{% endif %}>Q1 (Ene-Mar)</option>
+                        <option value="Q2" {% if trimestre == 'Q2' %}selected{% endif %}>Q2 (Abr-Jun)</option>
+                        <option value="Q3" {% if trimestre == 'Q3' %}selected{% endif %}>Q3 (Jul-Sep)</option>
+                        <option value="Q4" {% if trimestre == 'Q4' %}selected{% endif %}>Q4 (Oct-Dic)</option>
+                    </select>
+                </div>
+                
+                <!-- Filtro por mes -->
+                <div id="filtro-mes" style="display: {% if tipo_filtro == 'mes' %}flex{% else %}none{% endif %}; gap: 4px; align-items: center;">
+                    <label for="mes" class="filtro-label">Mes:</label>
+                    <select id="mes" name="mes" class="filtro-select" style="min-width: 100px;">
+                        <option value="1" {% if mes == '1' %}selected{% endif %}>Enero</option>
+                        <option value="2" {% if mes == '2' %}selected{% endif %}>Febrero</option>
+                        <option value="3" {% if mes == '3' %}selected{% endif %}>Marzo</option>
+                        <option value="4" {% if mes == '4' %}selected{% endif %}>Abril</option>
+                        <option value="5" {% if mes == '5' %}selected{% endif %}>Mayo</option>
+                        <option value="6" {% if mes == '6' %}selected{% endif %}>Junio</option>
+                        <option value="7" {% if mes == '7' %}selected{% endif %}>Julio</option>
+                        <option value="8" {% if mes == '8' %}selected{% endif %}>Agosto</option>
+                        <option value="9" {% if mes == '9' %}selected{% endif %}>Septiembre</option>
+                        <option value="10" {% if mes == '10' %}selected{% endif %}>Octubre</option>
+                        <option value="11" {% if mes == '11' %}selected{% endif %}>Noviembre</option>
+                        <option value="12" {% if mes == '12' %}selected{% endif %}>Diciembre</option>
+                    </select>
+                </div>
+                
+                <!-- Filtro por rango de fechas -->
+                <div id="filtro-rango" style="display: {% if tipo_filtro == 'rango' %}flex{% else %}none{% endif %}; gap: 4px; align-items: center;">
+                    <label for="mes_desde" class="filtro-label">Desde mes:</label>
+                    <select id="mes_desde" name="mes_desde" class="filtro-select" style="min-width: 100px;">
+                        <option value="1" {% if mes_desde == '1' %}selected{% endif %}>Enero</option>
+                        <option value="2" {% if mes_desde == '2' %}selected{% endif %}>Febrero</option>
+                        <option value="3" {% if mes_desde == '3' %}selected{% endif %}>Marzo</option>
+                        <option value="4" {% if mes_desde == '4' %}selected{% endif %}>Abril</option>
+                        <option value="5" {% if mes_desde == '5' %}selected{% endif %}>Mayo</option>
+                        <option value="6" {% if mes_desde == '6' %}selected{% endif %}>Junio</option>
+                        <option value="7" {% if mes_desde == '7' %}selected{% endif %}>Julio</option>
+                        <option value="8" {% if mes_desde == '8' %}selected{% endif %}>Agosto</option>
+                        <option value="9" {% if mes_desde == '9' %}selected{% endif %}>Septiembre</option>
+                        <option value="10" {% if mes_desde == '10' %}selected{% endif %}>Octubre</option>
+                        <option value="11" {% if mes_desde == '11' %}selected{% endif %}>Noviembre</option>
+                        <option value="12" {% if mes_desde == '12' %}selected{% endif %}>Diciembre</option>
+                    </select>
+                    <label for="año_desde" class="filtro-label">Año:</label>
+                    <select id="año_desde" name="año_desde" class="filtro-select" style="min-width: 60px;">
+                        {% for año_opcion in range(2020, 2030) %}
+                            <option value="{{ año_opcion }}" {% if año_desde == año_opcion|string %}selected{% endif %}>{{ año_opcion }}</option>
+                        {% endfor %}
+                    </select>
+                    <label for="mes_hasta" class="filtro-label">Hasta mes:</label>
+                    <select id="mes_hasta" name="mes_hasta" class="filtro-select" style="min-width: 100px;">
+                        <option value="1" {% if mes_hasta == '1' %}selected{% endif %}>Enero</option>
+                        <option value="2" {% if mes_hasta == '2' %}selected{% endif %}>Febrero</option>
+                        <option value="3" {% if mes_hasta == '3' %}selected{% endif %}>Marzo</option>
+                        <option value="4" {% if mes_hasta == '4' %}selected{% endif %}>Abril</option>
+                        <option value="5" {% if mes_hasta == '5' %}selected{% endif %}>Mayo</option>
+                        <option value="6" {% if mes_hasta == '6' %}selected{% endif %}>Junio</option>
+                        <option value="7" {% if mes_hasta == '7' %}selected{% endif %}>Julio</option>
+                        <option value="8" {% if mes_hasta == '8' %}selected{% endif %}>Agosto</option>
+                        <option value="9" {% if mes_hasta == '9' %}selected{% endif %}>Septiembre</option>
+                        <option value="10" {% if mes_hasta == '10' %}selected{% endif %}>Octubre</option>
+                        <option value="11" {% if mes_hasta == '11' %}selected{% endif %}>Noviembre</option>
+                        <option value="12" {% if mes_hasta == '12' %}selected{% endif %}>Diciembre</option>
+                    </select>
+                    <label for="año_hasta" class="filtro-label">Año:</label>
+                    <select id="año_hasta" name="año_hasta" class="filtro-select" style="min-width: 60px;">
+                        {% for año_opcion in range(2020, 2030) %}
+                            <option value="{{ año_opcion }}" {% if año_hasta == año_opcion|string %}selected{% endif %}>{{ año_opcion }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <button type="submit" class="btn" style="background: #1976d2; color: white; padding: 4px 12px; border: none; border-radius: 3px; cursor: pointer; font-size: 0.8em; height: 28px;">
+                    🔍 Filtrar
+                </button>
+            </div>
+            
+            <!-- Información del filtro activo -->
+            {% if fecha_desde_default and fecha_hasta_default %}
+            <div style="background: #e3f2fd; padding: 4px 8px; border-radius: 3px; font-size: 0.8em; color: #1976d2;">
+                <strong>Filtro activo:</strong> 
+                {% if tipo_filtro == 'trimestre' %}
+                    Trimestre {{ trimestre }} de {{ año }} ({{ fecha_desde_default }} a {{ fecha_hasta_default }})
+                {% elif tipo_filtro == 'mes' %}
+                    {% set meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'] %}
+                    {{ meses[mes|int] }} de {{ año }} ({{ fecha_desde_default }} a {{ fecha_hasta_default }})
+                {% else %}
+                    {% set meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'] %}
+                    {{ meses[mes_desde|int] }} {{ año_desde }} a {{ meses[mes_hasta|int] }} {{ año_hasta }} ({{ fecha_desde_default }} a {{ fecha_hasta_default }})
+                {% endif %}
+            </div>
+            {% endif %}
         </form>
-        <h1>Listado de movimientos</h1>
-        <div style="font-size:1.1em; color:#1976d2; margin-bottom: 10px; text-align:center;">
-            Total de movimientos en la vista: <strong id="contador-movimientos">{{ movimientos|length }}</strong>
-        </div>
-        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-            <a href="/movimientos/nuevo" class="menu-btn">Nuevo movimiento</a>
-            <a href="/" class="menu-btn volver-btn">Volver al inicio</a>
-        </div>
+        
+        <!-- Filtros adicionales para búsqueda en tiempo real -->
         <div class="search-box" style="display: flex; gap: 10px; align-items: center; margin-bottom: 20px;">
             <input type="text" id="busqueda" class="search-input" placeholder="Buscar movimiento..." onkeyup="filtrarTabla()">
-            <label for="fecha_desde" class="filtro-label">Desde:</label>
-            <input type="date" id="fecha_desde" class="filtro-input" onchange="filtrarTabla()" value="{{ fecha_desde_default }}">
-            <label for="fecha_hasta" class="filtro-label">Hasta:</label>
-            <input type="date" id="fecha_hasta" class="filtro-input" onchange="filtrarTabla()" value="{{ fecha_hasta_default }}">
-            <label for="tipo_filtro" class="filtro-label">Tipo:</label>
-            <select id="tipo_filtro" class="filtro-select" onchange="filtrarTabla()">
+            <label for="tipo_movimiento" class="filtro-label">Tipo:</label>
+            <select id="tipo_movimiento" class="filtro-select" onchange="filtrarTabla()">
                 <option value="">Todos</option>
                 <option value="Gasto">Gasto</option>
                 <option value="Ingreso">Ingreso</option>

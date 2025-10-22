@@ -222,16 +222,113 @@ def borrar_cuenta(id):
     return redirect(url_for('listar_cuentas'))
 
 # Vistas para movimientos
-@app.route('/movimientos')
+@app.route('/movimientos', methods=['GET', 'POST'])
 def listar_movimientos():
-    # Ordenar por fecha de factura convertida a fecha real (de más reciente a más antigua)
-    movimientos = db.session.query(Movimiento).order_by(
-        db.func.strftime('%Y-%m-%d', 
-            db.func.substr(Movimiento.fecha_factura, 7, 4) + '-' + 
-            db.func.substr(Movimiento.fecha_factura, 4, 2) + '-' + 
-            db.func.substr(Movimiento.fecha_factura, 1, 2)
-        ).desc()
-    ).all()
+    # Obtener parámetros de filtro
+    tipo_filtro = request.form.get('tipo_filtro', 'rango') if request.method == 'POST' else 'rango'
+    año = request.form.get('año', str(datetime.today().year)) if request.method == 'POST' else str(datetime.today().year)
+    trimestre = request.form.get('trimestre', '') if request.method == 'POST' else ''
+    mes = request.form.get('mes', '') if request.method == 'POST' else ''
+    mes_desde = request.form.get('mes_desde', '') if request.method == 'POST' else ''
+    año_desde = request.form.get('año_desde', str(datetime.today().year)) if request.method == 'POST' else str(datetime.today().year)
+    mes_hasta = request.form.get('mes_hasta', '') if request.method == 'POST' else ''
+    año_hasta = request.form.get('año_hasta', str(datetime.today().year)) if request.method == 'POST' else str(datetime.today().year)
+    
+    # Calcular fechas según el tipo de filtro
+    fecha_desde_default = ''
+    fecha_hasta_default = ''
+    
+    if tipo_filtro == 'trimestre' and trimestre:
+        año_int = int(año)
+        if trimestre == 'Q1':
+            fecha_desde_default = f"{año_int}-01-01"
+            fecha_hasta_default = f"{año_int}-03-31"
+        elif trimestre == 'Q2':
+            fecha_desde_default = f"{año_int}-04-01"
+            fecha_hasta_default = f"{año_int}-06-30"
+        elif trimestre == 'Q3':
+            fecha_desde_default = f"{año_int}-07-01"
+            fecha_hasta_default = f"{año_int}-09-30"
+        elif trimestre == 'Q4':
+            fecha_desde_default = f"{año_int}-10-01"
+            fecha_hasta_default = f"{año_int}-12-31"
+    elif tipo_filtro == 'mes' and mes:
+        año_int = int(año)
+        mes_int = int(mes)
+        fecha_desde_default = f"{año_int}-{mes_int:02d}-01"
+        # Calcular último día del mes
+        if mes_int in [1, 3, 5, 7, 8, 10, 12]:
+            ultimo_dia = 31
+        elif mes_int in [4, 6, 9, 11]:
+            ultimo_dia = 30
+        else:  # febrero
+            ultimo_dia = 29 if año_int % 4 == 0 and (año_int % 100 != 0 or año_int % 400 == 0) else 28
+        fecha_hasta_default = f"{año_int}-{mes_int:02d}-{ultimo_dia:02d}"
+    elif tipo_filtro == 'rango' and mes_desde and año_desde and mes_hasta and año_hasta:
+        año_desde_int = int(año_desde)
+        mes_desde_int = int(mes_desde)
+        año_hasta_int = int(año_hasta)
+        mes_hasta_int = int(mes_hasta)
+        
+        # Fecha desde: primer día del mes desde
+        fecha_desde_default = f"{año_desde_int}-{mes_desde_int:02d}-01"
+        
+        # Fecha hasta: último día del mes hasta
+        if mes_hasta_int in [1, 3, 5, 7, 8, 10, 12]:
+            ultimo_dia = 31
+        elif mes_hasta_int in [4, 6, 9, 11]:
+            ultimo_dia = 30
+        else:  # febrero
+            ultimo_dia = 29 if año_hasta_int % 4 == 0 and (año_hasta_int % 100 != 0 or año_hasta_int % 400 == 0) else 28
+        fecha_hasta_default = f"{año_hasta_int}-{mes_hasta_int:02d}-{ultimo_dia:02d}"
+    else:
+        # Por defecto, mostrar los últimos 6 meses
+        hoy = datetime.today()
+        # Calcular fecha de hace 6 meses
+        if hoy.month > 6:
+            fecha_desde_default = f"{hoy.year}-{hoy.month - 6:02d}-01"
+            mes_desde = str(hoy.month - 6)
+            año_desde = str(hoy.year)
+        else:
+            año_anterior = hoy.year - 1
+            mes_anterior = hoy.month + 6
+            fecha_desde_default = f"{año_anterior}-{mes_anterior:02d}-01"
+            mes_desde = str(mes_anterior)
+            año_desde = str(año_anterior)
+        
+        fecha_hasta_default = hoy.strftime('%Y-%m-%d')
+        mes_hasta = str(hoy.month)
+        año_hasta = str(hoy.year)
+    
+    # Filtrar movimientos por fecha si se especificó un filtro
+    if fecha_desde_default and fecha_hasta_default:
+        # Convertir fechas para comparación
+        fecha_inicio_dt, fecha_fin_dt = convertir_fechas_para_filtro(fecha_desde_default, fecha_hasta_default)
+        
+        # Obtener todos los movimientos y filtrar por fecha
+        todos_movimientos = db.session.query(Movimiento).all()
+        movimientos_filtrados = []
+        
+        for mov in todos_movimientos:
+            fecha_movimiento = parsear_fecha_robusto(mov.fecha_factura)
+            if fecha_movimiento and fecha_inicio_dt <= fecha_movimiento <= fecha_fin_dt:
+                movimientos_filtrados.append(mov)
+        
+        # Ordenar por fecha de factura (de más reciente a más antigua)
+        movimientos = sorted(movimientos_filtrados, 
+                           key=lambda x: parsear_fecha_robusto(x.fecha_factura) or datetime.min, 
+                           reverse=True)
+    else:
+        # Sin filtro de fecha, mostrar todos ordenados por fecha
+        movimientos = db.session.query(Movimiento).order_by(
+            db.func.strftime('%Y-%m-%d', 
+                db.func.substr(Movimiento.fecha_factura, 7, 4) + '-' + 
+                db.func.substr(Movimiento.fecha_factura, 4, 2) + '-' + 
+                db.func.substr(Movimiento.fecha_factura, 1, 2)
+            ).desc()
+        ).all()
+    
+    # Preparar datos de conceptos y contrapartidas
     conceptos_por_mov = {}
     contrapartida_por_mov = {}
     for mov in movimientos:
@@ -244,20 +341,25 @@ def listar_movimientos():
         else:
             contrapartida = None
         contrapartida_por_mov[mov.id] = contrapartida
-    # Calcular fechas por defecto
-    hoy = datetime.today()
-    mes = hoy.month
-    if mes <= 3:
-        inicio_trimestre = datetime(hoy.year, 1, 1)
-    elif mes <= 6:
-        inicio_trimestre = datetime(hoy.year, 4, 1)
-    elif mes <= 9:
-        inicio_trimestre = datetime(hoy.year, 7, 1)
-    else:
-        inicio_trimestre = datetime(hoy.year, 10, 1)
-    fecha_desde_default = inicio_trimestre.strftime('%Y-%m-%d')
-    fecha_hasta_default = hoy.strftime('%Y-%m-%d')
-    return render_template('movimientos.html', movimientos=movimientos, conceptos_por_mov=conceptos_por_mov, contrapartida_por_mov=contrapartida_por_mov, fecha_desde_default=fecha_desde_default, fecha_hasta_default=fecha_hasta_default)
+    
+    # Calcular total de movimientos en el sistema
+    total_movimientos_sistema = db.session.query(Movimiento).count()
+    
+    return render_template('movimientos.html', 
+                         movimientos=movimientos, 
+                         conceptos_por_mov=conceptos_por_mov, 
+                         contrapartida_por_mov=contrapartida_por_mov, 
+                         fecha_desde_default=fecha_desde_default, 
+                         fecha_hasta_default=fecha_hasta_default,
+                         tipo_filtro=tipo_filtro,
+                         año=año,
+                         trimestre=trimestre,
+                         mes=mes,
+                         mes_desde=mes_desde,
+                         año_desde=año_desde,
+                         mes_hasta=mes_hasta,
+                         año_hasta=año_hasta,
+                         total_movimientos_sistema=total_movimientos_sistema)
 
 @app.route('/movimientos/nuevo', methods=['GET', 'POST'])
 def nuevo_movimiento():
@@ -2974,9 +3076,9 @@ def analisis_gasoil_pdf():
         mimetype='application/pdf'
     )
 
-@app.route('/modelo_123', methods=['GET', 'POST'])
-def modelo_123():
-    """Modelo 123 - Rendimientos del capital - Cuenta 47300000001"""
+@app.route('/473_pagos_cuenta', methods=['GET', 'POST'])
+def pagos_cuenta_473():
+    """473 – Pagos a cuenta que minorará el Impuesto sobre Sociedades - Cuenta 47300000001"""
     resultado = None
     detalle = []
     total_importe = 0
@@ -3018,7 +3120,7 @@ def modelo_123():
         conceptos = conceptos_filtrados
         
         # Debug: imprimir información sobre los conceptos encontrados
-        print(f"Modelo 123 - Conceptos encontrados: {len(conceptos)}")
+        print(f"473 Pagos a cuenta - Conceptos encontrados: {len(conceptos)}")
         
         # Agrupar y sumar importes por cuenta, incluyendo detalles de transacciones
         detalle_dict = {}
@@ -3055,7 +3157,7 @@ def modelo_123():
         total_importe = sum(d['importe'] for d in detalle)
         resultado = total_importe
     
-    return render_template('modelo_123.html', resultado=resultado, detalle=detalle, total_importe=total_importe, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
+    return render_template('473_pagos_cuenta.html', resultado=resultado, detalle=detalle, total_importe=total_importe, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
 
 # Función para migrar la base de datos y agregar nuevos campos
 def migrar_base_datos():
