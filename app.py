@@ -183,15 +183,21 @@ def listar_cuentas():
 def nueva_cuenta():
     cuentas_normales = Cuenta.query.filter_by(tipo='normal').all()
     if request.method == 'POST':
-        cuenta = request.form['cuenta']
-        nombre = request.form['nombre']
-        tipo = request.form['tipo']
-        anotaciones = request.form.get('anotaciones', '')
-        cuenta_asociada_id = request.form.get('cuenta_asociada_id') if tipo == 'contrapartida' else None
-        nueva = Cuenta(cuenta=cuenta, nombre=nombre, tipo=tipo, anotaciones=anotaciones, cuenta_asociada_id=cuenta_asociada_id)
-        db.session.add(nueva)
-        db.session.commit()
-        return redirect(url_for('listar_cuentas'))
+        try:
+            cuenta = request.form['cuenta']
+            nombre = request.form['nombre']
+            tipo = request.form['tipo']
+            anotaciones = request.form.get('anotaciones', '')
+            cuenta_asociada_id = request.form.get('cuenta_asociada_id') if tipo == 'contrapartida' else None
+            nueva = Cuenta(cuenta=cuenta, nombre=nombre, tipo=tipo, anotaciones=anotaciones, cuenta_asociada_id=cuenta_asociada_id)
+            db.session.add(nueva)
+            commit_seguro("crear cuenta")
+            flash('Cuenta creada correctamente.', 'success')
+            return redirect(url_for('listar_cuentas'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al crear la cuenta: {str(e)}', 'error')
+            return render_template('cuenta_form.html', cuentas_normales=cuentas_normales)
     return render_template('cuenta_form.html', cuentas_normales=cuentas_normales)
 
 @app.route('/cuentas/editar/<int:id>', methods=['GET', 'POST'])
@@ -199,26 +205,36 @@ def editar_cuenta(id):
     cuenta = Cuenta.query.get_or_404(id)
     cuentas_normales = Cuenta.query.filter_by(tipo='normal').all()
     if request.method == 'POST':
-        cuenta.cuenta = request.form['cuenta']
-        cuenta.nombre = request.form['nombre']
-        cuenta.tipo = request.form['tipo']
-        cuenta.anotaciones = request.form.get('anotaciones', '')
-        cuenta.cuenta_asociada_id = request.form.get('cuenta_asociada_id') if cuenta.tipo == 'contrapartida' else None
-        db.session.commit()
-        return redirect(url_for('listar_cuentas'))
+        try:
+            cuenta.cuenta = request.form['cuenta']
+            cuenta.nombre = request.form['nombre']
+            cuenta.tipo = request.form['tipo']
+            cuenta.anotaciones = request.form.get('anotaciones', '')
+            cuenta.cuenta_asociada_id = request.form.get('cuenta_asociada_id') if cuenta.tipo == 'contrapartida' else None
+            commit_seguro("editar cuenta")
+            flash('Cuenta actualizada correctamente.', 'success')
+            return redirect(url_for('listar_cuentas'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al actualizar la cuenta: {str(e)}', 'error')
+            return render_template('cuenta_form.html', cuenta=cuenta, cuentas_normales=cuentas_normales)
     return render_template('cuenta_form.html', cuenta=cuenta, cuentas_normales=cuentas_normales)
 
 @app.route('/cuentas/borrar/<int:id>', methods=['POST'])
 def borrar_cuenta(id):
-    cuenta = Cuenta.query.get_or_404(id)
-    # Comprobar si la cuenta está asociada a algún concepto de movimiento
-    conceptos = MovimientoConcepto.query.filter((MovimientoConcepto.cuenta_id == id) | (MovimientoConcepto.contrapartida_id == id)).first()
-    if conceptos:
-        flash('No se puede borrar la cuenta porque está asociada a movimientos.', 'error')
-        return redirect(url_for('listar_cuentas'))
-    db.session.delete(cuenta)
-    db.session.commit()
-    flash('Cuenta borrada correctamente.', 'success')
+    try:
+        cuenta = Cuenta.query.get_or_404(id)
+        # Comprobar si la cuenta está asociada a algún concepto de movimiento
+        conceptos = MovimientoConcepto.query.filter((MovimientoConcepto.cuenta_id == id) | (MovimientoConcepto.contrapartida_id == id)).first()
+        if conceptos:
+            flash('No se puede borrar la cuenta porque está asociada a movimientos.', 'error')
+            return redirect(url_for('listar_cuentas'))
+        db.session.delete(cuenta)
+        commit_seguro("borrar cuenta")
+        flash('Cuenta borrada correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al borrar la cuenta: {str(e)}', 'error')
     return redirect(url_for('listar_cuentas'))
 
 # Vistas para movimientos
@@ -405,7 +421,8 @@ def nuevo_movimiento():
             db.session.add(concepto_obj)
             idx += 1
         try:
-            commit_con_reintentos()
+            commit_seguro("crear movimiento")
+            flash('Movimiento creado correctamente.', 'success')
             return redirect(url_for('listar_movimientos'))
         except Exception as e:
             db.session.rollback()
@@ -455,7 +472,8 @@ def editar_movimiento(id):
             db.session.add(concepto_obj)
             idx += 1
         try:
-            commit_con_reintentos()
+            commit_seguro("editar movimiento")
+            flash('Movimiento actualizado correctamente.', 'success')
             return redirect(url_for('listar_movimientos'))
         except Exception as e:
             db.session.rollback()
@@ -470,7 +488,7 @@ def borrar_movimiento(id):
     try:
         movimiento = Movimiento.query.get_or_404(id)
         db.session.delete(movimiento)
-        commit_con_reintentos()
+        commit_seguro("borrar movimiento")
         flash('Movimiento borrado correctamente.', 'success')
     except Exception as e:
         db.session.rollback()
@@ -1872,6 +1890,28 @@ def commit_con_reintentos():
         db.session.rollback()
         raise e
 
+def commit_seguro(operacion_descripcion="operación"):
+    """
+    Función helper para hacer commits seguros con manejo completo de errores.
+    Asegura que siempre se haga rollback en caso de error.
+    
+    Args:
+        operacion_descripcion: Descripción de la operación para mensajes de error
+    
+    Returns:
+        True si el commit fue exitoso
+    
+    Raises:
+        Exception: Si el commit falla después de los reintentos
+    """
+    try:
+        commit_con_reintentos()
+        return True
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error en commit de {operacion_descripcion}: {str(e)}')
+        raise e
+
 def limpiar_nombre_empleado(nombre):
     """Limpia el nombre del empleado quitando prefijos y DNI"""
     if not nombre:
@@ -2110,13 +2150,13 @@ def generar_todas_nominas():
         session.pop(config_key, None)
     
     try:
-        db.session.commit()
+        commit_seguro(f"generar {movimientos_creados} nóminas")
         flash(f'Se han creado {movimientos_creados} movimientos de nómina correctamente.', 'success')
         # Limpiar configuración general
         session.pop('nomina_general_config', None)
     except Exception as e:
         db.session.rollback()
-        flash(f'Error al crear los movimientos: {str(e)}', 'error')
+        flash(f'Error al crear los movimientos de nómina: {str(e)}. No se ha guardado ningún movimiento.', 'error')
     
     return redirect(url_for('listar_movimientos'))
 
@@ -2272,10 +2312,15 @@ def nuevo_vehiculo():
             observaciones=observaciones
         )
         
-        db.session.add(nuevo_vehiculo)
-        db.session.commit()
-        flash('Vehículo creado correctamente.', 'success')
-        return redirect(url_for('listar_vehiculos'))
+        try:
+            db.session.add(nuevo_vehiculo)
+            commit_seguro("crear vehículo")
+            flash('Vehículo creado correctamente.', 'success')
+            return redirect(url_for('listar_vehiculos'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al crear el vehículo: {str(e)}', 'error')
+            return render_template('vehiculo_form.html')
     
     return render_template('vehiculo_form.html')
 
@@ -2299,16 +2344,21 @@ def editar_vehiculo(id):
             flash('Ya existe un vehículo con esa matrícula.', 'error')
             return render_template('vehiculo_form.html', vehiculo=vehiculo)
         
-        vehiculo.matricula = matricula
-        vehiculo.marca = marca
-        vehiculo.modelo = modelo
-        vehiculo.año_compra = año_compra
-        vehiculo.observaciones = observaciones
-        vehiculo.activo = activo
-        
-        db.session.commit()
-        flash('Vehículo actualizado correctamente.', 'success')
-        return redirect(url_for('listar_vehiculos'))
+        try:
+            vehiculo.matricula = matricula
+            vehiculo.marca = marca
+            vehiculo.modelo = modelo
+            vehiculo.año_compra = año_compra
+            vehiculo.observaciones = observaciones
+            vehiculo.activo = activo
+            
+            commit_seguro("editar vehículo")
+            flash('Vehículo actualizado correctamente.', 'success')
+            return redirect(url_for('listar_vehiculos'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al actualizar el vehículo: {str(e)}', 'error')
+            return render_template('vehiculo_form.html', vehiculo=vehiculo)
     
     return render_template('vehiculo_form.html', vehiculo=vehiculo)
 
@@ -2318,15 +2368,19 @@ def borrar_vehiculo(id):
     """Borrar vehículo (marcar como inactivo)"""
     vehiculo = Vehiculo.query.get_or_404(id)
     
-    # Verificar si tiene consumos asociados
-    if vehiculo.consumos:
-        flash('No se puede borrar el vehículo porque tiene consumos asociados. Se marcará como inactivo.', 'warning')
-        vehiculo.activo = False
-        db.session.commit()
-    else:
-        db.session.delete(vehiculo)
-        db.session.commit()
-        flash('Vehículo borrado correctamente.', 'success')
+    try:
+        # Verificar si tiene consumos asociados
+        if vehiculo.consumos:
+            flash('No se puede borrar el vehículo porque tiene consumos asociados. Se marcará como inactivo.', 'warning')
+            vehiculo.activo = False
+            commit_seguro("desactivar vehículo")
+        else:
+            db.session.delete(vehiculo)
+            commit_seguro("borrar vehículo")
+            flash('Vehículo borrado correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al borrar el vehículo: {str(e)}', 'error')
     
     return redirect(url_for('listar_vehiculos'))
 
@@ -2396,10 +2450,15 @@ def nuevo_consumo():
             observaciones=observaciones
         )
         
-        db.session.add(nuevo_consumo)
-        db.session.commit()
-        flash('Consumo registrado correctamente.', 'success')
-        return redirect(url_for('listar_consumos'))
+        try:
+            db.session.add(nuevo_consumo)
+            commit_seguro("crear consumo")
+            flash('Consumo registrado correctamente.', 'success')
+            return redirect(url_for('listar_consumos'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al registrar el consumo: {str(e)}', 'error')
+            return render_template('consumo_form.html', vehiculos=vehiculos)
     
     return render_template('consumo_form.html', vehiculos=vehiculos)
 
@@ -2432,21 +2491,26 @@ def editar_consumo(id):
         precio_litro = precio_total / litros if litros > 0 else 0
         total = precio_total
         
-        consumo.vehiculo_id = vehiculo_id
-        consumo.fecha = fecha
-        consumo.litros = litros
-        consumo.precio_litro = precio_litro
-        consumo.total = total
-        consumo.kms = kms
-        consumo.facturacion = facturacion
-        consumo.recargo_combustible = recargo_combustible
-        consumo.dif_hvo = dif_hvo
-        consumo.bonus_calidad = bonus_calidad
-        consumo.observaciones = observaciones
-        
-        db.session.commit()
-        flash('Consumo actualizado correctamente.', 'success')
-        return redirect(url_for('listar_consumos'))
+        try:
+            consumo.vehiculo_id = vehiculo_id
+            consumo.fecha = fecha
+            consumo.litros = litros
+            consumo.precio_litro = precio_litro
+            consumo.total = total
+            consumo.kms = kms
+            consumo.facturacion = facturacion
+            consumo.recargo_combustible = recargo_combustible
+            consumo.dif_hvo = dif_hvo
+            consumo.bonus_calidad = bonus_calidad
+            consumo.observaciones = observaciones
+            
+            commit_seguro("editar consumo")
+            flash('Consumo actualizado correctamente.', 'success')
+            return redirect(url_for('listar_consumos'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al actualizar el consumo: {str(e)}', 'error')
+            return render_template('consumo_form.html', consumo=consumo, vehiculos=vehiculos)
     
     return render_template('consumo_form.html', consumo=consumo, vehiculos=vehiculos)
 
@@ -2454,10 +2518,14 @@ def editar_consumo(id):
 @login_required
 def borrar_consumo(id):
     """Borrar consumo"""
-    consumo = ConsumoGasoil.query.get_or_404(id)
-    db.session.delete(consumo)
-    db.session.commit()
-    flash('Consumo borrado correctamente.', 'success')
+    try:
+        consumo = ConsumoGasoil.query.get_or_404(id)
+        db.session.delete(consumo)
+        commit_seguro("borrar consumo")
+        flash('Consumo borrado correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al borrar el consumo: {str(e)}', 'error')
     return redirect(url_for('listar_consumos'))
 
 # Análisis y estadísticas
