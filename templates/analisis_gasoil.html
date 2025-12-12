@@ -14,12 +14,16 @@
         }
         
         .container {
-            max-width: 1400px;
+            max-width: 100%;
             margin: 0 auto;
             background: white;
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             overflow: hidden;
+        }
+        
+        .content {
+            padding: 20px;
         }
         
         .header {
@@ -35,9 +39,6 @@
             font-weight: 300;
         }
         
-        .content {
-            padding: 40px;
-        }
         
         .filters {
             background: #f8f9fa;
@@ -203,12 +204,14 @@
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            table-layout: auto;
         }
         
         th, td {
-            padding: 15px;
+            padding: 8px 6px;
             text-align: left;
             border-bottom: 1px solid #e9ecef;
+            font-size: 0.85em;
         }
         
         th {
@@ -216,9 +219,10 @@
             font-weight: 600;
             color: #333;
             text-transform: uppercase;
-            font-size: 0.9em;
-            letter-spacing: 0.5px;
+            font-size: 0.75em;
+            letter-spacing: 0.3px;
             text-align: center;
+            white-space: nowrap;
         }
         
         tr:hover {
@@ -252,48 +256,54 @@
         }
         
         .desglose {
-            font-size: 0.85em;
-            line-height: 1.3;
+            font-size: 0.75em;
+            line-height: 1.2;
         }
         
         .desglose-item {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 2px;
+            margin-bottom: 1px;
         }
         
         .desglose-item .label {
             font-weight: 600;
             color: #666;
-            min-width: 50px;
+            min-width: 35px;
         }
         
         .desglose-item .value {
             font-family: 'Courier New', monospace;
             color: #333;
+            font-size: 0.9em;
         }
         
         .desglose-total {
             font-weight: bold;
             color: #2c3e50;
-            margin-bottom: 5px;
-            padding-bottom: 3px;
+            margin-bottom: 3px;
+            padding-bottom: 2px;
             border-bottom: 1px solid #ddd;
+            font-size: 0.9em;
         }
         
         td:first-child {
             text-align: left;
             font-weight: 600;
-            font-size: 0.95em;
+            font-size: 0.85em;
         }
         
         td:first-child small {
             color: #666;
-            font-size: 0.85em;
+            font-size: 0.75em;
             font-weight: normal;
         }
         
-        @media (max-width: 768px) {
+        .number {
+            font-size: 0.85em;
+        }
+        
+            @media (max-width: 768px) {
             .actions {
                 flex-direction: column;
                 align-items: stretch;
@@ -304,8 +314,12 @@
             }
             
             th, td {
-                padding: 10px 8px;
-                font-size: 0.9em;
+                padding: 8px 4px;
+                font-size: 0.75em;
+            }
+            
+            .content {
+                padding: 15px;
             }
         }
     </style>
@@ -399,18 +413,18 @@
                         <thead>
                             <tr>
                                 <th>{% if vehiculo_seleccionado and not acumulado %}Mes{% else %}Matrícula{% endif %}</th>
-                                <th>Km Recorridos</th>
-                                <th>Litros Totales</th>
-                                <th>Importe Total (€)</th>
-                                <th>Precio/ Litro (€)</th>
-                                <th>Precio/ Litro con Bonificación (€)</th>
-                                <th>Consumo (L/100km)</th>
+                                <th>Km</th>
+                                <th>Litros</th>
+                                <th>Total €</th>
+                                <th>€/L</th>
+                                <th>€/L Bonif</th>
+                                <th>L/100km</th>
                                 <th>Facturación</th>
-                                <th>Precio Cobrado por Km Limpio (€)</th>
-                                <th>Precio Cobrado por Km Extras (€)</th>
-                                <th>Precio Pagado por Km (€)</th>
-                                <th>Variación (€)</th>
-                                <th>% Gasto Gasoil</th>
+                                <th>€/Km Limpio</th>
+                                <th>€/Km Extras</th>
+                                <th>€/Km Pagado</th>
+                                <th>Variación</th>
+                                <th>% Gasoil</th>
                             </tr>
                         </thead>
                         <tbody>

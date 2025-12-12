@@ -1846,6 +1846,25 @@ def limpiar_empleado_filter(nombre):
     """Filtro de Jinja2 para limpiar nombres de empleados"""
     return limpiar_nombre_empleado(nombre)
 
+@app.template_filter('mes_anio')
+def mes_anio_filter(fecha):
+    """Convierte fecha a formato mm-aaaa"""
+    try:
+        from datetime import datetime
+        if not fecha:
+            return ''
+        # Si está en formato YYYY-MM-DD
+        if '-' in fecha and len(fecha.split('-')[0]) == 4:
+            fecha_obj = datetime.strptime(fecha, '%Y-%m-%d')
+            return fecha_obj.strftime('%m-%Y')
+        # Si está en formato dd/mm/yyyy
+        elif '/' in fecha:
+            fecha_obj = datetime.strptime(fecha, '%d/%m/%Y')
+            return fecha_obj.strftime('%m-%Y')
+    except Exception:
+        pass
+    return fecha
+
 def convertir_fechas_para_filtro(fecha_inicio, fecha_fin):
     """
     Convierte fechas de YYYY-MM-DD a objetos datetime para usar en filtros de base de datos

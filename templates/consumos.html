@@ -451,7 +451,7 @@
                     <tbody>
                         {% for consumo in consumos %}
                         <tr>
-                            <td>{{ consumo.fecha }}</td>
+                            <td>{{ consumo.fecha | mes_anio }}</td>
                             <td><strong>{{ consumo.vehiculo.matricula }}</strong><br>
                                 <small>{{ consumo.vehiculo.marca }} {{ consumo.vehiculo.modelo }}</small>
                             </td>
