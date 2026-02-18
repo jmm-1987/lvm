@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>{% if viaje %}Editar Viaje{% else %}Nuevo Viaje{% endif %} - Control XPO</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 30px auto;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 25px;
+        }
+        h1 {
+            color: #1976d2;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 500;
+            font-size: 0.9em;
+        }
+        input[type="text"],
+        input[type="date"],
+        input[type="time"],
+        select {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #b0bec5;
+            border-radius: 5px;
+            font-size: 0.9em;
+            box-sizing: border-box;
+        }
+        input[type="text"]:focus,
+        input[type="date"]:focus,
+        input[type="time"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #1976d2;
+            box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            font-size: 0.9em;
+            background-color: #1976d2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: background 0.2s;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .btn:hover {
+            background-color: #1565c0;
+        }
+        .btn-secondary {
+            background-color: #757575;
+        }
+        .btn-secondary:hover {
+            background-color: #616161;
+        }
+        .form-actions {
+            margin-top: 25px;
+            padding-top: 15px;
+            border-top: 1px solid #e0e0e0;
+        }
+        .help-text {
+            font-size: 0.75em;
+            color: #666;
+            margin-top: 3px;
+            font-style: italic;
+        }
+        .required {
+            color: #d32f2f;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{% if viaje %}✏️ Editar Viaje{% else %}➕ Nuevo Viaje{% endif %}</h1>
+        
+        <form method="POST">
+            <div class="form-group">
+                <label for="fecha">Fecha <span class="required">*</span></label>
+                <input type="date" id="fecha" name="fecha" value="{% if viaje %}{% if '/' in viaje.fecha %}{% set fecha_parts = viaje.fecha.split('/') %}{{ fecha_parts[2] }}-{{ fecha_parts[1] }}-{{ fecha_parts[0] }}{% else %}{{ viaje.fecha }}{% endif %}{% else %}{{ datetime.now().strftime('%Y-%m-%d') }}{% endif %}" required>
+                <div class="help-text">Fecha del viaje</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="hora">Hora</label>
+                <input type="time" id="hora" name="hora" value="{% if viaje %}{{ viaje.hora or '' }}{% endif %}">
+                <div class="help-text">Hora del viaje</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="origen">Origen <span class="required">*</span></label>
+                <select id="origen" name="origen" required>
+                    <option value="">Seleccione origen</option>
+                    <option value="Algeciras" {% if viaje and viaje.origen == 'Algeciras' %}selected{% endif %}>Algeciras</option>
+                    <option value="Valladolid" {% if viaje and viaje.origen == 'Valladolid' %}selected{% endif %}>Valladolid</option>
+                </select>
+                <div class="help-text">Origen del viaje</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="matricula_cabeza">Matrícula Cabeza Tractora <span class="required">*</span></label>
+                <input type="text" id="matricula_cabeza" name="matricula_cabeza" value="{% if viaje %}{{ viaje.matricula_cabeza }}{% endif %}" required maxlength="20" style="text-transform: uppercase;">
+                <div class="help-text">Matrícula de la cabeza tractora</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="matricula_remolque">Matrícula Remolque <span class="required">*</span></label>
+                <input type="text" id="matricula_remolque" name="matricula_remolque" value="{% if viaje %}{{ viaje.matricula_remolque }}{% endif %}" required maxlength="20" style="text-transform: uppercase;">
+                <div class="help-text">Matrícula del remolque</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="manifiesto">Manifiesto</label>
+                <input type="text" id="manifiesto" name="manifiesto" value="{% if viaje %}{{ viaje.manifiesto or '' }}{% endif %}" maxlength="20">
+                <div class="help-text">Número de manifiesto</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="facturado">Facturado</label>
+                <select id="facturado" name="facturado">
+                    <option value="no" {% if not viaje or viaje.facturado == 'no' %}selected{% endif %}>No</option>
+                    <option value="si" {% if viaje and viaje.facturado == 'si' %}selected{% endif %}>Sí</option>
+                </select>
+                <div class="help-text">Indica si el viaje ha sido facturado</div>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn">💾 Guardar</button>
+                <a href="{{ url_for('control_xpo') }}" class="btn btn-secondary">❌ Cancelar</a>
+            </div>
+        </form>
+    </div>
+    
+    <script>
+        // Convertir a mayúsculas automáticamente
+        document.getElementById('matricula_cabeza').addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase();
+        });
+        document.getElementById('matricula_remolque').addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase();
+        });
+    </script>
+</body>
+</html>

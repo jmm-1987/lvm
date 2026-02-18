@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import threading
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, Response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -73,52 +74,18 @@ class MovimientoConcepto(db.Model):
 
 Movimiento.conceptos = db.relationship('MovimientoConcepto', backref='movimiento', cascade='all, delete-orphan')
 
-# Modelo de Vehículo
-class Vehiculo(db.Model):
+# Modelo de Viaje XPO
+class ViajeXPO(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    matricula = db.Column(db.String(20), nullable=False, unique=True)
-    marca = db.Column(db.String(50), nullable=False)
-    modelo = db.Column(db.String(50), nullable=False)
-    año_compra = db.Column(db.Integer, nullable=False)
-    fecha_alta = db.Column(db.String(20), nullable=False, default=lambda: datetime.now().strftime('%Y-%m-%d'))
-    activo = db.Column(db.Boolean, nullable=False, default=True)
-    observaciones = db.Column(db.String(255), nullable=True)
-
-# Modelo de Consumo de Gasoil
-class ConsumoGasoil(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    vehiculo_id = db.Column(db.Integer, db.ForeignKey('vehiculo.id'), nullable=False)
-    fecha = db.Column(db.String(20), nullable=False)  # Formato YYYY-MM-DD
-    litros = db.Column(db.Float, nullable=False)
-    precio_litro = db.Column(db.Float, nullable=False)
-    total = db.Column(db.Float, nullable=False)  # litros * precio_litro
-    kms = db.Column(db.Float, nullable=False)
-    facturacion = db.Column(db.Float, nullable=True)  # Ingresos generados por el vehículo
-    recargo_combustible = db.Column(db.Float, nullable=True, default=0.0)  # Recargo de combustible
-    dif_hvo = db.Column(db.Float, nullable=True, default=0.0)  # Dif.HVO
-    bonus_calidad = db.Column(db.Float, nullable=True, default=0.0)  # Bonus calidad
-    observaciones = db.Column(db.String(255), nullable=True)
-    
-    vehiculo = db.relationship('Vehiculo', backref='consumos')
-    
-    @property
-    def facturacion_completa(self):
-        """Calcula la facturación completa incluyendo recargos y bonus"""
-        # Manejar facturacion que puede ser string o número
-        if self.facturacion is None:
-            facturacion_base = 0
-        elif isinstance(self.facturacion, (int, float)):
-            facturacion_base = self.facturacion
-        else:
-            try:
-                facturacion_base = float(self.facturacion)
-            except (ValueError, TypeError):
-                facturacion_base = 0
-        
-        recargo = self.recargo_combustible or 0
-        dif_hvo = self.dif_hvo or 0
-        bonus = self.bonus_calidad or 0
-        return facturacion_base + recargo + dif_hvo + bonus
+    fecha = db.Column(db.String(20), nullable=False)  # Formato DD/MM/YYYY
+    hora = db.Column(db.String(10), nullable=True)  # Formato HH:MM
+    origen = db.Column(db.String(50), nullable=False)  # Algeciras o Valladolid
+    matricula_cabeza = db.Column(db.String(20), nullable=False)  # Matrícula de la cabeza tractora
+    matricula_remolque = db.Column(db.String(20), nullable=False)  # Matrícula del remolque
+    manifiesto = db.Column(db.String(20), nullable=True)  # Número de manifiesto (8 dígitos)
+    facturado = db.Column(db.String(10), nullable=True, default='no')  # 'si' o 'no'
+    fecha_creacion = db.Column(db.String(20), nullable=False, default=lambda: datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    origen_telegram = db.Column(db.Boolean, nullable=False, default=False)  # Indica si viene del bot de Telegram
 
 # Eliminar el modelo Usuario y la tabla de usuarios
 # Definir un usuario en memoria para Flask-Login
@@ -162,10 +129,12 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# Proteger todas las rutas excepto login y static
+# Proteger todas las rutas excepto login, static y API de Telegram
 @app.before_request
 def require_login():
-    if request.endpoint not in ('login', 'static') and not current_user.is_authenticated:
+    # Excluir rutas públicas: login, static files y API de Telegram
+    excluded_endpoints = ('login', 'static', 'telegram_webhook')
+    if request.endpoint not in excluded_endpoints and not current_user.is_authenticated:
         return redirect(url_for('login'))
 
 @app.route('/')
@@ -2289,263 +2258,8 @@ def guardar_config_empleado(empleado_id):
     flash(f'Configuración de {limpiar_nombre_empleado(empleado.nombre)} guardada correctamente.', 'success')
     return redirect(url_for('ver_todas_nominas'))
 
-# ==================== CONTROL DE GASOIL ====================
+# ==================== CONTROL XPO ====================
 
-@app.route('/control_gasoil')
-@login_required
-def control_gasoil():
-    """Página principal del control de gasoil"""
-    vehiculos = Vehiculo.query.filter_by(activo=True).all()
-    return render_template('control_gasoil.html', vehiculos=vehiculos)
-
-# Gestión de vehículos
-@app.route('/control_gasoil/vehiculos')
-@login_required
-def listar_vehiculos():
-    """Listar todos los vehículos"""
-    vehiculos = Vehiculo.query.order_by(Vehiculo.matricula).all()
-    return render_template('vehiculos.html', vehiculos=vehiculos)
-
-@app.route('/control_gasoil/vehiculos/nuevo', methods=['GET', 'POST'])
-@login_required
-def nuevo_vehiculo():
-    """Crear nuevo vehículo"""
-    if request.method == 'POST':
-        matricula = request.form['matricula'].upper().strip()
-        marca = request.form['marca'].strip()
-        modelo = request.form['modelo'].strip()
-        año_compra = int(request.form['año_compra'])
-        observaciones = request.form.get('observaciones', '').strip()
-        
-        # Verificar que la matrícula no esté duplicada
-        existe = Vehiculo.query.filter_by(matricula=matricula).first()
-        if existe:
-            flash('Ya existe un vehículo con esa matrícula.', 'error')
-            return render_template('vehiculo_form.html')
-        
-        nuevo_vehiculo = Vehiculo(
-            matricula=matricula,
-            marca=marca,
-            modelo=modelo,
-            año_compra=año_compra,
-            observaciones=observaciones
-        )
-        
-        try:
-            db.session.add(nuevo_vehiculo)
-            commit_seguro("crear vehículo")
-            flash('Vehículo creado correctamente.', 'success')
-            return redirect(url_for('listar_vehiculos'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error al crear el vehículo: {str(e)}', 'error')
-            return render_template('vehiculo_form.html')
-    
-    return render_template('vehiculo_form.html')
-
-@app.route('/control_gasoil/vehiculos/editar/<int:id>', methods=['GET', 'POST'])
-@login_required
-def editar_vehiculo(id):
-    """Editar vehículo existente"""
-    vehiculo = Vehiculo.query.get_or_404(id)
-    
-    if request.method == 'POST':
-        matricula = request.form['matricula'].upper().strip()
-        marca = request.form['marca'].strip()
-        modelo = request.form['modelo'].strip()
-        año_compra = int(request.form['año_compra'])
-        observaciones = request.form.get('observaciones', '').strip()
-        activo = 'activo' in request.form
-        
-        # Verificar que la matrícula no esté duplicada (excepto el propio vehículo)
-        existe = Vehiculo.query.filter(Vehiculo.matricula == matricula, Vehiculo.id != id).first()
-        if existe:
-            flash('Ya existe un vehículo con esa matrícula.', 'error')
-            return render_template('vehiculo_form.html', vehiculo=vehiculo)
-        
-        try:
-            vehiculo.matricula = matricula
-            vehiculo.marca = marca
-            vehiculo.modelo = modelo
-            vehiculo.año_compra = año_compra
-            vehiculo.observaciones = observaciones
-            vehiculo.activo = activo
-            
-            commit_seguro("editar vehículo")
-            flash('Vehículo actualizado correctamente.', 'success')
-            return redirect(url_for('listar_vehiculos'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error al actualizar el vehículo: {str(e)}', 'error')
-            return render_template('vehiculo_form.html', vehiculo=vehiculo)
-    
-    return render_template('vehiculo_form.html', vehiculo=vehiculo)
-
-@app.route('/control_gasoil/vehiculos/borrar/<int:id>', methods=['POST'])
-@login_required
-def borrar_vehiculo(id):
-    """Borrar vehículo (marcar como inactivo)"""
-    vehiculo = Vehiculo.query.get_or_404(id)
-    
-    try:
-        # Verificar si tiene consumos asociados
-        if vehiculo.consumos:
-            flash('No se puede borrar el vehículo porque tiene consumos asociados. Se marcará como inactivo.', 'warning')
-            vehiculo.activo = False
-            commit_seguro("desactivar vehículo")
-        else:
-            db.session.delete(vehiculo)
-            commit_seguro("borrar vehículo")
-            flash('Vehículo borrado correctamente.', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error al borrar el vehículo: {str(e)}', 'error')
-    
-    return redirect(url_for('listar_vehiculos'))
-
-# Gestión de consumos
-@app.route('/control_gasoil/consumos')
-@login_required
-def listar_consumos():
-    """Listar todos los consumos"""
-    vehiculo_id = request.args.get('vehiculo_id', type=int)
-    año = request.args.get('año', type=int)
-    mes = request.args.get('mes', type=int)
-    
-    query = ConsumoGasoil.query.join(Vehiculo)
-    
-    if vehiculo_id:
-        query = query.filter(ConsumoGasoil.vehiculo_id == vehiculo_id)
-    if año:
-        query = query.filter(db.func.strftime('%Y', ConsumoGasoil.fecha) == str(año))
-    if mes:
-        query = query.filter(db.func.strftime('%m', ConsumoGasoil.fecha) == f"{mes:02d}")
-    
-    consumos = query.order_by(ConsumoGasoil.fecha.desc()).all()
-    vehiculos = Vehiculo.query.filter_by(activo=True).all()
-    
-    return render_template('consumos.html', consumos=consumos, vehiculos=vehiculos, 
-                         vehiculo_seleccionado=vehiculo_id, año_seleccionado=año, mes_seleccionado=mes)
-
-@app.route('/control_gasoil/consumos/nuevo', methods=['GET', 'POST'])
-@login_required
-def nuevo_consumo():
-    """Crear nuevo consumo"""
-    vehiculos = Vehiculo.query.filter_by(activo=True).all()
-    
-    if request.method == 'POST':
-        vehiculo_id = int(request.form['vehiculo_id'])
-        fecha = request.form['fecha']
-        litros = float(request.form['litros'])
-        precio_total = float(request.form['precio_total'])
-        kms = float(request.form['kms'])
-        facturacion = float(request.form.get('facturacion', 0)) if request.form.get('facturacion') else None
-        recargo_combustible = float(request.form.get('recargo_combustible', 0)) if request.form.get('recargo_combustible') else 0
-        dif_hvo = float(request.form.get('dif_hvo', 0)) if request.form.get('dif_hvo') else 0
-        bonus_calidad = float(request.form.get('bonus_calidad', 0)) if request.form.get('bonus_calidad') else 0
-        observaciones = request.form.get('observaciones', '').strip()
-        
-        # Convertir fecha de dd/mm/yyyy a yyyy-mm-dd si es necesario
-        if '/' in fecha and len(fecha.split('/')) == 3:
-            partes = fecha.split('/')
-            if len(partes[0]) == 2 and len(partes[1]) == 2 and len(partes[2]) == 4:
-                fecha = f"{partes[2]}-{partes[1]}-{partes[0]}"
-        
-        # Calcular precio por litro
-        precio_litro = precio_total / litros if litros > 0 else 0
-        total = precio_total
-        
-        nuevo_consumo = ConsumoGasoil(
-            vehiculo_id=vehiculo_id,
-            fecha=fecha,
-            litros=litros,
-            precio_litro=precio_litro,
-            total=total,
-            kms=kms,
-            facturacion=facturacion,
-            recargo_combustible=recargo_combustible,
-            dif_hvo=dif_hvo,
-            bonus_calidad=bonus_calidad,
-            observaciones=observaciones
-        )
-        
-        try:
-            db.session.add(nuevo_consumo)
-            commit_seguro("crear consumo")
-            flash('Consumo registrado correctamente.', 'success')
-            return redirect(url_for('listar_consumos'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error al registrar el consumo: {str(e)}', 'error')
-            return render_template('consumo_form.html', vehiculos=vehiculos)
-    
-    return render_template('consumo_form.html', vehiculos=vehiculos)
-
-@app.route('/control_gasoil/consumos/editar/<int:id>', methods=['GET', 'POST'])
-@login_required
-def editar_consumo(id):
-    """Editar consumo existente"""
-    consumo = ConsumoGasoil.query.get_or_404(id)
-    vehiculos = Vehiculo.query.filter_by(activo=True).all()
-    
-    if request.method == 'POST':
-        vehiculo_id = int(request.form['vehiculo_id'])
-        fecha = request.form['fecha']
-        litros = float(request.form['litros'])
-        precio_total = float(request.form['precio_total'])
-        kms = float(request.form['kms'])
-        facturacion = float(request.form.get('facturacion', 0)) if request.form.get('facturacion') else None
-        recargo_combustible = float(request.form.get('recargo_combustible', 0)) if request.form.get('recargo_combustible') else 0
-        dif_hvo = float(request.form.get('dif_hvo', 0)) if request.form.get('dif_hvo') else 0
-        bonus_calidad = float(request.form.get('bonus_calidad', 0)) if request.form.get('bonus_calidad') else 0
-        observaciones = request.form.get('observaciones', '').strip()
-        
-        # Convertir fecha de dd/mm/yyyy a yyyy-mm-dd si es necesario
-        if '/' in fecha and len(fecha.split('/')) == 3:
-            partes = fecha.split('/')
-            if len(partes[0]) == 2 and len(partes[1]) == 2 and len(partes[2]) == 4:
-                fecha = f"{partes[2]}-{partes[1]}-{partes[0]}"
-        
-        # Calcular precio por litro
-        precio_litro = precio_total / litros if litros > 0 else 0
-        total = precio_total
-        
-        try:
-            consumo.vehiculo_id = vehiculo_id
-            consumo.fecha = fecha
-            consumo.litros = litros
-            consumo.precio_litro = precio_litro
-            consumo.total = total
-            consumo.kms = kms
-            consumo.facturacion = facturacion
-            consumo.recargo_combustible = recargo_combustible
-            consumo.dif_hvo = dif_hvo
-            consumo.bonus_calidad = bonus_calidad
-            consumo.observaciones = observaciones
-            
-            commit_seguro("editar consumo")
-            flash('Consumo actualizado correctamente.', 'success')
-            return redirect(url_for('listar_consumos'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error al actualizar el consumo: {str(e)}', 'error')
-            return render_template('consumo_form.html', consumo=consumo, vehiculos=vehiculos)
-    
-    return render_template('consumo_form.html', consumo=consumo, vehiculos=vehiculos)
-
-@app.route('/control_gasoil/consumos/borrar/<int:id>', methods=['POST'])
-@login_required
-def borrar_consumo(id):
-    """Borrar consumo"""
-    try:
-        consumo = ConsumoGasoil.query.get_or_404(id)
-        db.session.delete(consumo)
-        commit_seguro("borrar consumo")
-        flash('Consumo borrado correctamente.', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error al borrar el consumo: {str(e)}', 'error')
-    return redirect(url_for('listar_consumos'))
 
 # Análisis y estadísticas
 @app.route('/cuentas_resumen', methods=['GET', 'POST'])
@@ -2686,482 +2400,157 @@ def cuentas_resumen():
                          fecha_fin=fecha_fin,
                          tipo_cuenta=tipo_cuenta)
 
-@app.route('/control_gasoil/analisis')
+@app.route('/control_xpo')
 @login_required
-def analisis_gasoil():
-    """Página de análisis y estadísticas"""
-    vehiculo_id = request.args.get('vehiculo_id', type=int)
-    año = request.args.get('año', type=int) or datetime.now().year
-    mes = request.args.get('mes', type=int)
-    acumulado = request.args.get('acumulado', type=str) == 'true'
-    
-    # Obtener todos los vehículos activos
-    vehiculos = Vehiculo.query.filter_by(activo=True).all()
-    
-    # Calcular estadísticas por vehículo
-    estadisticas_vehiculos = []
-    
-    # Inicializar variables de desglose
-    total_facturacion_base = 0
-    total_dif_hvo = 0
-    total_recargo = 0
-    total_bonus = 0
-    
-    # Si hay un vehículo seleccionado y no es acumulado, mostrar por meses
-    if vehiculo_id and not acumulado:
-        # Obtener todos los meses con datos para el vehículo seleccionado
-        vehiculo = Vehiculo.query.get(vehiculo_id)
-        if vehiculo:
-            # Obtener todos los consumos del vehículo para el año
-            consumos_vehiculo = ConsumoGasoil.query.filter(
-                ConsumoGasoil.vehiculo_id == vehiculo_id,
-                db.func.strftime('%Y', ConsumoGasoil.fecha) == str(año)
-            ).all()
-            
-            # Agrupar por mes
-            consumos_por_mes = {}
-            for consumo in consumos_vehiculo:
-                mes_consumo = datetime.strptime(consumo.fecha, '%Y-%m-%d').month
-                if mes_consumo not in consumos_por_mes:
-                    consumos_por_mes[mes_consumo] = []
-                consumos_por_mes[mes_consumo].append(consumo)
-            
-            # Procesar cada mes
-            for mes_num, consumos_mes in consumos_por_mes.items():
-                if consumos_mes:
-                    # Calcular estadísticas del mes
-                    total_litros = sum(c.litros for c in consumos_mes)
-                    total_gasto = sum(c.total for c in consumos_mes)
-                    total_kms = sum(c.kms for c in consumos_mes)
-                    total_facturacion = sum(c.facturacion_completa for c in consumos_mes)
-                    
-                    # Calcular totales por componente
-                    total_facturacion_base = sum(
-                        float(c.facturacion) if c.facturacion and isinstance(c.facturacion, str) 
-                        else (c.facturacion or 0) for c in consumos_mes
-                    )
-                    total_dif_hvo = sum(c.dif_hvo or 0 for c in consumos_mes)
-                    total_recargo = sum(c.recargo_combustible or 0 for c in consumos_mes)
-                    total_bonus = sum(c.bonus_calidad or 0 for c in consumos_mes)
-                    
-                    # Calcular precios y variaciones
-                    precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
-                    consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
-                    precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
-                    precio_cobrado_por_km_limpio = total_facturacion_base / total_kms if total_kms > 0 else 0
-                    precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
-                    variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
-                    porcentaje_gasoil = (total_gasto / total_facturacion * 100) if total_facturacion > 0 else 0
-                    
-                    estadisticas_vehiculos.append({
-                        'vehiculo': vehiculo,
-                        'mes': mes_num,
-                        'total_litros': total_litros,
-                        'total_gasto': total_gasto,
-                        'total_kms': total_kms,
-                        'total_facturacion': total_facturacion,
-                        'precio_por_litro': precio_por_litro,
-                        'precio_por_litro_bonificacion': precio_por_litro_bonificacion,
-                        'consumo_por_100km': consumo_por_100km,
-                        'precio_cobrado_por_km': precio_cobrado_por_km,
-                        'precio_cobrado_por_km_limpio': precio_cobrado_por_km_limpio,
-                        'precio_pagado_por_km': precio_pagado_por_km,
-                        'variacion_precio': variacion_precio,
-                        'porcentaje_gasoil': porcentaje_gasoil,
-                        'total_facturacion_base': total_facturacion_base,
-                        'total_dif_hvo': total_dif_hvo,
-                        'total_recargo': total_recargo,
-                        'total_bonus': total_bonus
-                    })
-            
-            # Ordenar por mes
-            estadisticas_vehiculos.sort(key=lambda x: x['mes'])
-    else:
-        # Lógica original para todos los vehículos o vehículo específico con acumulado
-        for vehiculo in vehiculos:
-            # Construir query base para el vehículo y año
-            query = ConsumoGasoil.query.filter(
-                ConsumoGasoil.vehiculo_id == vehiculo.id,
-                db.func.strftime('%Y', ConsumoGasoil.fecha) == str(año)
-            )
-            
-            # Si hay filtro por vehículo específico, solo procesar ese vehículo
-            if vehiculo_id and vehiculo.id != vehiculo_id:
-                continue
-                
-            # Si hay filtro por mes, aplicarlo
-            if mes:
-                query = query.filter(db.func.strftime('%m', ConsumoGasoil.fecha) == f"{mes:02d}")
-            
-            consumos_vehiculo = query.all()
-            
-            if consumos_vehiculo:
-                # Calcular estadísticas del vehículo
-                total_litros = sum(c.litros for c in consumos_vehiculo)
-                total_gasto = sum(c.total for c in consumos_vehiculo)
-                total_kms = sum(c.kms for c in consumos_vehiculo)
-                total_facturacion = sum(c.facturacion_completa for c in consumos_vehiculo)
-                
-                # Calcular totales por componente
-                total_facturacion_base = sum(
-                    float(c.facturacion) if c.facturacion and isinstance(c.facturacion, str) 
-                    else (c.facturacion or 0) for c in consumos_vehiculo
-                )
-                total_dif_hvo = sum(c.dif_hvo or 0 for c in consumos_vehiculo)
-                total_recargo = sum(c.recargo_combustible or 0 for c in consumos_vehiculo)
-                total_bonus = sum(c.bonus_calidad or 0 for c in consumos_vehiculo)
-                
-                # Calcular precios y variaciones
-                precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
-                precio_por_litro_bonificacion = (total_gasto - total_dif_hvo - total_recargo) / total_litros if total_litros > 0 else 0
-                consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
-                precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
-                precio_cobrado_por_km_limpio = total_facturacion_base / total_kms if total_kms > 0 else 0
-                precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
-                variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
-                porcentaje_gasoil = (total_gasto / total_facturacion * 100) if total_facturacion > 0 else 0
-                
-                estadisticas_vehiculos.append({
-                    'vehiculo': vehiculo,
-                    'mes': None,
-                    'total_litros': total_litros,
-                    'total_gasto': total_gasto,
-                    'total_kms': total_kms,
-                    'total_facturacion': total_facturacion,
-                    'precio_por_litro': precio_por_litro,
-                    'precio_por_litro_bonificacion': precio_por_litro_bonificacion,
-                    'consumo_por_100km': consumo_por_100km,
-                    'precio_cobrado_por_km': precio_cobrado_por_km,
-                    'precio_cobrado_por_km_limpio': precio_cobrado_por_km_limpio,
-                    'precio_pagado_por_km': precio_pagado_por_km,
-                    'variacion_precio': variacion_precio,
-                    'porcentaje_gasoil': porcentaje_gasoil,
-                    'total_facturacion_base': total_facturacion_base,
-                    'total_dif_hvo': total_dif_hvo,
-                    'total_recargo': total_recargo,
-                    'total_bonus': total_bonus
-                })
-        
-        # Ordenar por consumo por 100km (de menor a mayor - más eficiente primero)
-        estadisticas_vehiculos.sort(key=lambda x: x['porcentaje_gasoil'])
-    
-    return render_template('analisis_gasoil.html', 
-                         estadisticas_vehiculos=estadisticas_vehiculos,
-                         vehiculos=vehiculos,
-                         vehiculo_seleccionado=vehiculo_id,
-                         año_seleccionado=año,
-                         mes_seleccionado=mes,
-                         acumulado=acumulado)
+def control_xpo():
+    """Listar todos los viajes XPO"""
+    viajes = ViajeXPO.query.order_by(ViajeXPO.fecha.desc(), ViajeXPO.hora.desc()).all()
+    total_viajes = ViajeXPO.query.count()
+    return render_template('control_xpo.html', viajes=viajes, total_viajes=total_viajes)
 
-@app.route('/control_gasoil/analisis/pdf')
+@app.route('/control_xpo/nuevo', methods=['GET', 'POST'])
 @login_required
-def analisis_gasoil_pdf():
-    """Generar PDF del análisis de gasoil"""
-    # Obtener los mismos parámetros que la función principal
-    año = request.args.get('año', datetime.now().year, type=int)
-    vehiculo_id = request.args.get('vehiculo_id', type=int)
-    mes = request.args.get('mes', type=int)
-    acumulado = request.args.get('acumulado', 'false').lower() == 'true'
-    
-    # Obtener vehículos activos
-    vehiculos = Vehiculo.query.filter_by(activo=True).all()
-    
-    # Calcular estadísticas (reutilizar lógica de la función principal)
-    estadisticas_vehiculos = []
-    
-    if vehiculo_id and not acumulado:
-        # Mostrar meses del vehículo específico
-        vehiculo = Vehiculo.query.get(vehiculo_id)
-        if vehiculo:
-            consumos = ConsumoGasoil.query.filter(
-                ConsumoGasoil.vehiculo_id == vehiculo.id,
-                db.func.strftime('%Y', ConsumoGasoil.fecha) == str(año)
-            ).all()
-            
-            # Agrupar por mes
-            consumos_por_mes = {}
-            for consumo in consumos:
-                mes_consumo = consumo.fecha.month
-                if mes_consumo not in consumos_por_mes:
-                    consumos_por_mes[mes_consumo] = []
-                consumos_por_mes[mes_consumo].append(consumo)
-            
-            # Procesar cada mes
-            for mes_num, consumos_mes in consumos_por_mes.items():
-                if consumos_mes:
-                    # Calcular estadísticas del mes
-                    total_litros = sum(c.litros for c in consumos_mes)
-                    total_gasto = sum(c.total for c in consumos_mes)
-                    total_kms = sum(c.kms for c in consumos_mes)
-                    total_facturacion = sum(c.facturacion_completa for c in consumos_mes)
-                    
-                    # Calcular totales por componente
-                    total_facturacion_base = sum(
-                        float(c.facturacion) if c.facturacion and isinstance(c.facturacion, str) 
-                        else (c.facturacion or 0) for c in consumos_mes
-                    )
-                    total_dif_hvo = sum(c.dif_hvo or 0 for c in consumos_mes)
-                    total_recargo = sum(c.recargo_combustible or 0 for c in consumos_mes)
-                    total_bonus = sum(c.bonus_calidad or 0 for c in consumos_mes)
-                    
-                    # Calcular precios y variaciones
-                    precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
-                    consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
-                    precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
-                    precio_cobrado_por_km_limpio = total_facturacion_base / total_kms if total_kms > 0 else 0
-                    precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
-                    variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
-                    porcentaje_gasoil = (total_gasto / total_facturacion * 100) if total_facturacion > 0 else 0
-                    
-                    estadisticas_vehiculos.append({
-                        'vehiculo': vehiculo,
-                        'mes': mes_num,
-                        'total_litros': total_litros,
-                        'total_gasto': total_gasto,
-                        'total_kms': total_kms,
-                        'total_facturacion': total_facturacion,
-                        'precio_por_litro': precio_por_litro,
-                        'precio_por_litro_bonificacion': precio_por_litro_bonificacion,
-                        'consumo_por_100km': consumo_por_100km,
-                        'precio_cobrado_por_km': precio_cobrado_por_km,
-                        'precio_cobrado_por_km_limpio': precio_cobrado_por_km_limpio,
-                        'precio_pagado_por_km': precio_pagado_por_km,
-                        'variacion_precio': variacion_precio,
-                        'porcentaje_gasoil': porcentaje_gasoil,
-                        'total_facturacion_base': total_facturacion_base,
-                        'total_dif_hvo': total_dif_hvo,
-                        'total_recargo': total_recargo,
-                        'total_bonus': total_bonus
-                    })
-            
-            # Ordenar por mes
-            estadisticas_vehiculos.sort(key=lambda x: x['mes'])
-    else:
-        # Lógica para todos los vehículos o vehículo específico con acumulado
-        for vehiculo in vehiculos:
-            # Construir query base para el vehículo y año
-            query = ConsumoGasoil.query.filter(
-                ConsumoGasoil.vehiculo_id == vehiculo.id,
-                db.func.strftime('%Y', ConsumoGasoil.fecha) == str(año)
-            )
-            
-            # Si hay filtro por vehículo específico, solo procesar ese vehículo
-            if vehiculo_id and vehiculo.id != vehiculo_id:
-                continue
-                
-            # Si hay filtro por mes, aplicarlo
-            if mes:
-                query = query.filter(db.func.strftime('%m', ConsumoGasoil.fecha) == f"{mes:02d}")
-            
-            consumos = query.all()
-            
-            if consumos:
-                # Calcular estadísticas
-                total_litros = sum(c.litros for c in consumos)
-                total_gasto = sum(c.total for c in consumos)
-                total_kms = sum(c.kms for c in consumos)
-                total_facturacion = sum(c.facturacion_completa for c in consumos)
-                
-                # Calcular totales por componente
-                total_facturacion_base = sum(
-                    float(c.facturacion) if c.facturacion and isinstance(c.facturacion, str) 
-                    else (c.facturacion or 0) for c in consumos
-                )
-                total_dif_hvo = sum(c.dif_hvo or 0 for c in consumos)
-                total_recargo = sum(c.recargo_combustible or 0 for c in consumos)
-                total_bonus = sum(c.bonus_calidad or 0 for c in consumos)
-                
-                # Calcular precios y variaciones
-                precio_por_litro = total_gasto / total_litros if total_litros > 0 else 0
-                precio_por_litro_bonificacion = (total_gasto - total_dif_hvo - total_recargo) / total_litros if total_litros > 0 else 0
-                consumo_por_100km = (total_litros / total_kms * 100) if total_kms > 0 else 0
-                precio_cobrado_por_km = total_facturacion / total_kms if total_kms > 0 else 0
-                precio_cobrado_por_km_limpio = total_facturacion_base / total_kms if total_kms > 0 else 0
-                precio_pagado_por_km = total_gasto / total_kms if total_kms > 0 else 0
-                variacion_precio = precio_cobrado_por_km - precio_pagado_por_km
-                porcentaje_gasoil = (total_gasto / total_facturacion * 100) if total_facturacion > 0 else 0
-                
-                estadisticas_vehiculos.append({
-                    'vehiculo': vehiculo,
-                    'total_litros': total_litros,
-                    'total_gasto': total_gasto,
-                    'total_kms': total_kms,
-                    'total_facturacion': total_facturacion,
-                    'precio_por_litro': precio_por_litro,
-                    'precio_por_litro_bonificacion': precio_por_litro_bonificacion,
-                    'consumo_por_100km': consumo_por_100km,
-                    'precio_cobrado_por_km': precio_cobrado_por_km,
-                    'precio_cobrado_por_km_limpio': precio_cobrado_por_km_limpio,
-                    'precio_pagado_por_km': precio_pagado_por_km,
-                    'variacion_precio': variacion_precio,
-                    'porcentaje_gasoil': porcentaje_gasoil,
-                    'total_facturacion_base': total_facturacion_base,
-                    'total_dif_hvo': total_dif_hvo,
-                    'total_recargo': total_recargo,
-                    'total_bonus': total_bonus
-                })
+def nuevo_viaje():
+    """Crear nuevo viaje"""
+    if request.method == 'POST':
+        fecha = request.form['fecha']
+        hora = request.form.get('hora', '').strip() or None
+        origen = request.form['origen']
+        matricula_cabeza = request.form['matricula_cabeza'].upper().strip()
+        matricula_remolque = request.form['matricula_remolque'].upper().strip()
+        manifiesto = request.form.get('manifiesto', '').strip() or None
+        facturado = request.form.get('facturado', 'no')
         
-        # Ordenar por consumo por 100km (de menor a mayor - más eficiente primero)
-        estadisticas_vehiculos.sort(key=lambda x: x['porcentaje_gasoil'])
-    
-    # Crear el PDF en formato horizontal
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=40, leftMargin=40, topMargin=50, bottomMargin=50)
-    
-    # Estilos
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=12,
-        spaceAfter=15,
-        alignment=1  # Centrado
-    )
-    
-    # Contenido del PDF
-    story = []
-    
-    # Título
-    titulo = f"Análisis de Consumos de Gasoil - {año}"
-    if vehiculo_id and not acumulado:
-        vehiculo = Vehiculo.query.get(vehiculo_id)
-        titulo += f" - {vehiculo.matricula}"
-    elif vehiculo_id and acumulado:
-        vehiculo = Vehiculo.query.get(vehiculo_id)
-        titulo += f" - {vehiculo.matricula} (Acumulado)"
-    elif mes:
-        meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-        titulo += f" - {meses[mes-1]}"
-    
-    story.append(Paragraph(titulo, title_style))
-    story.append(Spacer(1, 6))
-    
-    # Crear tabla
-    if estadisticas_vehiculos:
-        # Encabezados de la tabla en dos filas
-        headers = []
-        if vehiculo_id and not acumulado:
-            headers = ['Mes', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 
-                      'Precio por\nLitro (€)', 'Precio por\nLitro con\nBonificación (€)', 'Consumo\n(L/100km)', 'Total\nCobrado\nCompleto (€)', 
-                      'Precio Cobrado\npor Km\nLimpio (€)', 'Precio Cobrado\npor Km (€)', 'Precio Pagado\npor Km (€)', 'Variación\n(€)', '%\nGasto\nGasoil']
-        else:
-            headers = ['Matrícula', 'Km\nRecorridos', 'Litros\nTotales', 'Importe\nTotal (€)', 
-                      'Precio por\nLitro (€)', 'Precio por\nLitro con\nBonificación (€)', 'Consumo\n(L/100km)', 'Total\nCobrado\nCompleto (€)', 
-                      'Precio Cobrado\npor Km\nLimpio (€)', 'Precio Cobrado\npor Km (€)', 'Precio Pagado\npor Km (€)', 'Variación\n(€)', '%\nGasto\nGasoil']
+        # Convertir fecha de YYYY-MM-DD (formato input date) a DD/MM/YYYY para almacenar
+        if '-' in fecha and len(fecha.split('-')) == 3:
+            partes = fecha.split('-')
+            if len(partes[0]) == 4:  # Formato YYYY-MM-DD
+                fecha = f"{partes[2]}/{partes[1]}/{partes[0]}"  # Convertir a DD/MM/YYYY
         
-        # Datos de la tabla
-    data = [headers]
+        nuevo_viaje = ViajeXPO(
+            fecha=fecha,
+            hora=hora,
+            origen=origen,
+            matricula_cabeza=matricula_cabeza,
+            matricula_remolque=matricula_remolque,
+            manifiesto=manifiesto,
+            facturado=facturado,
+            origen_telegram=False
+        )
         
-    for stats in estadisticas_vehiculos:
-        row = []
-        if vehiculo_id and not acumulado:
-            meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-            row.append(meses[stats['mes']-1])
-        else:
-            row.append(f"{stats['vehiculo'].matricula}\n{stats['vehiculo'].marca} {stats['vehiculo'].modelo}")
-        
-        row.extend([
-            f"{stats['total_kms']:.0f}",
-            f"{stats['total_litros']:.2f}",
-            f"{stats['total_gasto']:.2f}",
-            f"{stats['precio_por_litro']:.3f}",
-            f"{stats['precio_por_litro_bonificacion']:.3f}",
-            f"{stats['consumo_por_100km']:.2f}",
-            f"{stats['total_facturacion']:.2f}",
-            f"{stats['precio_cobrado_por_km_limpio']:.3f}",
-            f"{stats['precio_cobrado_por_km']:.3f}",
-            f"{stats['precio_pagado_por_km']:.3f}",
-            f"{stats['variacion_precio']:.3f}",
-            f"{stats['porcentaje_gasoil']:.1f}%"
-        ])
-        data.append(row)
+        try:
+            db.session.add(nuevo_viaje)
+            commit_seguro("crear viaje")
+            flash('Viaje registrado correctamente.', 'success')
+            return redirect(url_for('control_xpo'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al registrar el viaje: {str(e)}', 'error')
+            return render_template('viaje_form.html')
     
-    # Añadir filas de totales y medias si hay datos
-    if estadisticas_vehiculos:
-        # Calcular totales
-        total_kms = sum(stats['total_kms'] for stats in estadisticas_vehiculos)
-        total_litros = sum(stats['total_litros'] for stats in estadisticas_vehiculos)
-        total_gasto = sum(stats['total_gasto'] for stats in estadisticas_vehiculos)
-        total_facturacion = sum(stats['total_facturacion'] for stats in estadisticas_vehiculos)
-        total_facturacion_base = sum(stats['total_facturacion_base'] for stats in estadisticas_vehiculos)
-        
-        # Fila de totales y medias combinada
-        num_vehiculos = len(estadisticas_vehiculos)
-        totals_row = ['TOTALES/MEDIAS']
-        totals_row.extend([
-            f"{total_kms:.0f}",  # Total km
-            f"{total_litros:.1f}",  # Total litros
-            f"{total_gasto:.2f}",  # Total importe
-            f"{sum(stats['precio_por_litro'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",  # Media precio/litro
-            f"{sum(stats['precio_por_litro_bonificacion'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",  # Media precio/litro con bonificación
-            f"{sum(stats['consumo_por_100km'] for stats in estadisticas_vehiculos) / num_vehiculos:.2f}" if num_vehiculos > 0 else "0.00",  # Media consumo
-            f"{total_facturacion:.2f}",  # Total facturación
-            f"{sum(stats['precio_cobrado_por_km_limpio'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",  # Media precio cobrado limpio
-            f"{sum(stats['precio_cobrado_por_km'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",  # Media precio cobrado
-            f"{sum(stats['precio_pagado_por_km'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",  # Media precio pagado
-            f"{sum(stats['variacion_precio'] for stats in estadisticas_vehiculos) / num_vehiculos:.3f}" if num_vehiculos > 0 else "0.000",  # Media variación
-            f"{sum(stats['porcentaje_gasoil'] for stats in estadisticas_vehiculos) / num_vehiculos:.1f}%" if num_vehiculos > 0 else "0.0%"  # Media porcentaje
-        ])
-        data.append(totals_row)
-    
-    # Crear tabla con anchos optimizados para formato horizontal
-    table = Table(data, colWidths=[0.9*inch, 0.6*inch, 0.6*inch, 0.6*inch, 0.6*inch, 
-                                    0.6*inch, 0.6*inch, 0.6*inch, 0.6*inch, 0.6*inch, 0.6*inch, 0.6*inch, 0.5*inch])
-    
-    # Estilo de la tabla optimizado para formato horizontal con encabezados de dos líneas
-    table_style = TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('TOPPADDING', (0, 0), (-1, 0), 8),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('FONTSIZE', (0, 1), (-1, -1), 6),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 1), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
-    ])
-    
-    # Añadir estilos para la fila de totales y medias si existen
-    if estadisticas_vehiculos:
-        num_data_rows = len(estadisticas_vehiculos)
-        # Fila de totales/medias (última fila)
-        totals_row_idx = num_data_rows + 1
-        table_style.add('BACKGROUND', (0, totals_row_idx), (-1, totals_row_idx), colors.lightgrey)
-        table_style.add('FONTNAME', (0, totals_row_idx), (-1, totals_row_idx), 'Helvetica-Bold')
-        table_style.add('FONTSIZE', (0, totals_row_idx), (-1, totals_row_idx), 6)
-    
-    table.setStyle(table_style)
-    story.append(table)
+    return render_template('viaje_form.html')
 
-    story.append(Paragraph("No hay datos disponibles para los filtros seleccionados.", styles['Normal']))
+@app.route('/control_xpo/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
+def editar_viaje(id):
+    """Editar viaje existente"""
+    viaje = ViajeXPO.query.get_or_404(id)
     
-    # Generar PDF
-    doc.build(story)
-    buffer.seek(0)
+    if request.method == 'POST':
+        fecha = request.form['fecha']
+        hora = request.form.get('hora', '').strip() or None
+        origen = request.form['origen']
+        matricula_cabeza = request.form['matricula_cabeza'].upper().strip()
+        matricula_remolque = request.form['matricula_remolque'].upper().strip()
+        manifiesto = request.form.get('manifiesto', '').strip() or None
+        facturado = request.form.get('facturado', 'no')
+        
+        # Convertir fecha de YYYY-MM-DD (formato input date) a DD/MM/YYYY para almacenar
+        if '-' in fecha and len(fecha.split('-')) == 3:
+            partes = fecha.split('-')
+            if len(partes[0]) == 4:  # Formato YYYY-MM-DD
+                fecha = f"{partes[2]}/{partes[1]}/{partes[0]}"  # Convertir a DD/MM/YYYY
+        
+        try:
+            viaje.fecha = fecha
+            viaje.hora = hora
+            viaje.origen = origen
+            viaje.matricula_cabeza = matricula_cabeza
+            viaje.matricula_remolque = matricula_remolque
+            viaje.manifiesto = manifiesto
+            viaje.facturado = facturado
+            
+            commit_seguro("editar viaje")
+            flash('Viaje actualizado correctamente.', 'success')
+            return redirect(url_for('control_xpo'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al actualizar el viaje: {str(e)}', 'error')
+            return render_template('viaje_form.html', viaje=viaje)
     
-    # Preparar respuesta
-    filename = f"analisis_gasoil_{año}"
-    if vehiculo_id:
-        vehiculo = Vehiculo.query.get(vehiculo_id)
-        filename += f"_{vehiculo.matricula}"
-    if mes:
-        filename += f"_mes_{mes:02d}"
-    if acumulado:
-        filename += "_acumulado"
-    filename += ".pdf"
-    
-    return send_file(
-        buffer,
-        as_attachment=True,
-        download_name=filename,
-        mimetype='application/pdf'
-    )
+    return render_template('viaje_form.html', viaje=viaje)
+
+@app.route('/control_xpo/borrar/<int:id>', methods=['POST'])
+@login_required
+def borrar_viaje(id):
+    """Borrar viaje"""
+    try:
+        viaje = ViajeXPO.query.get_or_404(id)
+        db.session.delete(viaje)
+        commit_seguro("borrar viaje")
+        flash('Viaje borrado correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al borrar el viaje: {str(e)}', 'error')
+    return redirect(url_for('control_xpo'))
+
+@app.route('/api/telegram/webhook', methods=['POST'])
+def telegram_webhook():
+    """Endpoint para recibir datos del bot de Telegram"""
+    try:
+        data = request.get_json()
+        
+        # Extraer datos del mensaje
+        origen = data.get('origen')  # Algeciras o Valladolid
+        
+        # Los datos ya vienen extraídos del bot (que usa OpenAI)
+        fecha_extraida = data.get('fecha', datetime.now().strftime('%d/%m/%Y'))
+        hora_extraida = data.get('hora', datetime.now().strftime('%H:%M'))
+        matricula_cabeza_extraida = data.get('matricula_cabeza', '').upper().strip()
+        matricula_remolque_extraida = data.get('matricula_remolque', '').upper().strip()
+        
+        # Validar que tenemos los datos mínimos
+        if not matricula_cabeza_extraida or not matricula_remolque_extraida:
+            return jsonify({
+                'success': False, 
+                'error': 'No se pudieron extraer las matrículas de la imagen'
+            }), 400
+        
+        # Crear nuevo viaje
+        nuevo_viaje = ViajeXPO(
+            fecha=fecha_extraida,
+            hora=hora_extraida,
+            origen=origen,
+            matricula_cabeza=matricula_cabeza_extraida,
+            matricula_remolque=matricula_remolque_extraida,
+            manifiesto=None,
+            facturado='no',
+            origen_telegram=True
+        )
+        
+        db.session.add(nuevo_viaje)
+        commit_seguro("crear viaje desde Telegram")
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Viaje registrado correctamente',
+            'viaje_id': nuevo_viaje.id
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error en webhook de Telegram: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/473_pagos_cuenta', methods=['GET', 'POST'])
 def pagos_cuenta_473():
@@ -3259,25 +2648,38 @@ def migrar_base_datos():
         print(f"❌ Error en la migración: {str(e)}")
         return False
 
-# Función para migrar datos existentes de facturación de string a float
-def migrar_facturacion():
-    """Migra los datos de facturación de string a float"""
-    with app.app_context():
-        consumos = ConsumoGasoil.query.all()
-        for consumo in consumos:
-            if consumo.facturacion and isinstance(consumo.facturacion, str):
-                try:
-                    # Intentar convertir a float
-                    consumo.facturacion = float(consumo.facturacion)
-                except (ValueError, TypeError):
-                    # Si no se puede convertir, poner a None
-                    consumo.facturacion = None
-        db.session.commit()
-        print("Migración de facturación completada")
+def iniciar_bot_telegram():
+    """Inicia el bot de Telegram en un hilo separado"""
+    try:
+        # Importar aquí para evitar errores si telegram_bot no está disponible
+        from telegram_bot import main as bot_main
+        import config
+        
+        # Verificar que el token esté configurado
+        if not config.TELEGRAM_BOT_TOKEN or config.TELEGRAM_BOT_TOKEN == 'TU_TOKEN_AQUI':
+            print("⚠️  Bot de Telegram no iniciado: Token no configurado en config.py")
+            print("   La aplicación Flask funcionará normalmente sin el bot.")
+            return
+        
+        # Iniciar el bot en un hilo separado
+        bot_thread = threading.Thread(target=bot_main, daemon=True)
+        bot_thread.start()
+        print("✅ Bot de Telegram iniciado en segundo plano")
+        
+    except ImportError as e:
+        print(f"⚠️  No se pudo importar el módulo del bot de Telegram: {e}")
+        print("   La aplicación Flask funcionará normalmente sin el bot.")
+    except Exception as e:
+        print(f"⚠️  Error al iniciar el bot de Telegram: {e}")
+        print("   La aplicación Flask funcionará normalmente sin el bot.")
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        # Ejecutar migración de facturación
-        migrar_facturacion()
+    
+    # Iniciar el bot de Telegram antes de iniciar Flask
+    iniciar_bot_telegram()
+    
+    # Iniciar Flask
+    print("🌐 Iniciando aplicación Flask...")
     app.run(debug=True) 

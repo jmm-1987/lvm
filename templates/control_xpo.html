@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Control XPO</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 20px auto;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        h1 {
+            color: #1976d2;
+            margin: 0;
+            font-size: 1.8em;
+        }
+        .header-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .total-info {
+            font-size: 0.95em;
+            color: #666;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            font-size: 0.9em;
+            background-color: #1976d2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: background 0.2s;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .btn:hover {
+            background-color: #1565c0;
+        }
+        .btn-danger {
+            background-color: #e53935;
+        }
+        .btn-danger:hover {
+            background-color: #d32f2f;
+        }
+        .btn-success {
+            background-color: #4caf50;
+        }
+        .btn-success:hover {
+            background-color: #388e3c;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: #fff;
+        }
+        th, td {
+            padding: 10px 6px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 0.85em;
+        }
+        th {
+            background: #e8f5e9;
+            color: #2e7d32;
+            font-weight: 600;
+            position: relative;
+        }
+        th::after {
+            content: '🔽';
+            position: absolute;
+            right: 5px;
+            font-size: 0.7em;
+            opacity: 0.5;
+        }
+        tr:hover {
+            background: #f5f5f5;
+        }
+        tr:nth-child(even) {
+            background: #fafafa;
+        }
+        tr:nth-child(even):hover {
+            background: #f0f0f0;
+        }
+        .acciones {
+            white-space: nowrap;
+        }
+        .acciones a {
+            margin-right: 8px;
+            padding: 5px 10px;
+            font-size: 0.85em;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        .facturado-si {
+            color: #4caf50;
+            font-weight: bold;
+        }
+        .facturado-no {
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>🚛 Control XPO</h1>
+                <div class="total-info">Total viajes: {{ total_viajes }}</div>
+            </div>
+            <div>
+                <a href="{{ url_for('nuevo_viaje') }}" class="btn btn-success">➕ Nuevo Viaje</a>
+                <a href="{{ url_for('index') }}" class="btn btn-danger">🏠 Volver al inicio</a>
+            </div>
+        </div>
+
+        {% if viajes %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Hora</th>
+                    <th>Origen</th>
+                    <th>Matrícula</th>
+                    <th>Remolque</th>
+                    <th>Manifiesto</th>
+                    <th>Facturado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for viaje in viajes %}
+                <tr>
+                    <td>
+                        {% if viaje.fecha %}
+                            {% if '/' in viaje.fecha %}
+                                {{ viaje.fecha }}
+                            {% else %}
+                                {% set fecha_parts = viaje.fecha.split('-') %}
+                                {% if fecha_parts|length == 3 %}
+                                    {{ fecha_parts[2] }}/{{ fecha_parts[1] }}/{{ fecha_parts[0] }}
+                                {% else %}
+                                    {{ viaje.fecha }}
+                                {% endif %}
+                            {% endif %}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ viaje.hora or '-' }}</td>
+                    <td>{{ viaje.origen }}</td>
+                    <td>{{ viaje.matricula_cabeza }}</td>
+                    <td>{{ viaje.matricula_remolque }}</td>
+                    <td>{{ viaje.manifiesto or '-' }}</td>
+                    <td>
+                        {% if viaje.facturado == 'si' %}
+                            <span class="facturado-si">Sí</span>
+                        {% else %}
+                            <span class="facturado-no">No</span>
+                        {% endif %}
+                    </td>
+                    <td class="acciones">
+                        <a href="{{ url_for('editar_viaje', id=viaje.id) }}" class="btn" style="padding: 5px 10px; font-size: 0.85em;">✏️ Editar</a>
+                        <form action="{{ url_for('borrar_viaje', id=viaje.id) }}" method="post" style="display: inline;" onsubmit="return confirm('¿Estás seguro de que quieres borrar este viaje?');">
+                            <button type="submit" class="btn btn-danger" style="padding: 5px 10px; font-size: 0.85em;">🗑️ Borrar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <p>No hay viajes registrados aún.</p>
+            <a href="{{ url_for('nuevo_viaje') }}" class="btn btn-success" style="margin-top: 20px;">➕ Crear primer viaje</a>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
