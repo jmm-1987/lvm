@@ -9,7 +9,7 @@
         h1 { color: #388e3c; text-align: center; font-size: 1.8em; line-height: 1.3; }
         form { display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; margin-bottom: 30px; }
         label { font-weight: bold; margin-right: 10px; }
-        input[type="date"] { padding: 8px; border-radius: 5px; border: 1px solid #b0bec5; margin: 0 10px; }
+        input[type="number"], select { padding: 8px; border-radius: 5px; border: 1px solid #b0bec5; margin: 0 10px; }
         button { padding: 10px 24px; background: #388e3c; color: #fff; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; text-decoration:none; display:inline-block; }
         button:hover { background: #256029; }
         .menu-btn { padding: 10px 24px; background: #e53935; color: #fff; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; text-decoration:none; display:inline-block; }
@@ -22,6 +22,30 @@
         .detalle-table th:nth-child(3) { text-align: right; padding-right: 15px; }
         .detalle-table th { background: #e3eaf2; }
         .diferencia { font-size: 1.3em; font-weight: bold; margin-top: 18px; }
+        .grafica-container { margin-top: 26px; padding: 18px; border-radius: 10px; background: #f7fafd; border: 1px solid #dbe8f5; }
+        .grafica-titulo { margin: 0 0 6px 0; font-size: 1.05em; color: #1f4e79; font-weight: bold; }
+        .grafica-subtitulo { margin: 0 0 12px 0; color: #546e7a; font-size: 0.95em; }
+        .leyenda-grafica { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-bottom: 10px; }
+        .leyenda-item { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9em; color: #37474f; }
+        .leyenda-color { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+        .leyenda-linea { width: 18px; height: 0; border-top: 3px solid #2e7d32; display: inline-block; border-radius: 2px; }
+        .grafica-canvas-wrap { width: 100%; overflow-x: auto; }
+        #grafica-mensual { width: 100%; min-width: 620px; height: 320px; border-radius: 8px; background: #fff; border: 1px solid #e0e0e0; }
+        .tooltip-grafica {
+            position: fixed;
+            z-index: 1200;
+            background: rgba(33, 33, 33, 0.96);
+            color: #fff;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 12px;
+            line-height: 1.35;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+            max-width: 260px;
+        }
+        .criterio-fecha { width: 100%; text-align: center; margin-top: -8px; margin-bottom: 18px; color: #37474f; font-weight: bold; }
         .tooltip {
             position: relative;
             cursor: pointer;
@@ -164,12 +188,43 @@
         <button id="print-btn" onclick="window.print()" style="float:right; margin-bottom:18px; background:#1976d2; color:#fff; border:none; border-radius:6px; padding:10px 22px; font-size:1em; cursor:pointer;">Imprimir PDF</button>
         <h1>Resultado de explotación{% if resultado is not none %} - {{ fecha_inicio_formateada }} a {{ fecha_fin_formateada }}{% endif %}</h1>
         <form method="post">
-            <label>Desde: <input type="date" name="fecha_inicio" required value="{{ fecha_inicio }}"></label>
-            <label>Hasta: <input type="date" name="fecha_fin" required value="{{ fecha_fin }}"></label>
+            <label>Periodo:
+                <select name="tipo_periodo" id="tipo_periodo">
+                    <option value="mes" {% if tipo_periodo == 'mes' %}selected{% endif %}>Mes completo</option>
+                    <option value="trimestre" {% if tipo_periodo == 'trimestre' %}selected{% endif %}>Trimestre completo</option>
+                </select>
+            </label>
+            <label id="campo_mes">Mes:
+                <select name="periodo_mes">
+                    {% for numero_mes, nombre_mes in meses_disponibles %}
+                        <option value="{{ numero_mes }}" {% if periodo_mes == numero_mes %}selected{% endif %}>{{ nombre_mes }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label id="campo_trimestre">Trimestre:
+                <select name="periodo_trimestre">
+                    <option value="Q1" {% if periodo_trimestre == 'Q1' %}selected{% endif %}>Q1 (Ene-Mar)</option>
+                    <option value="Q2" {% if periodo_trimestre == 'Q2' %}selected{% endif %}>Q2 (Abr-Jun)</option>
+                    <option value="Q3" {% if periodo_trimestre == 'Q3' %}selected{% endif %}>Q3 (Jul-Sep)</option>
+                    <option value="Q4" {% if periodo_trimestre == 'Q4' %}selected{% endif %}>Q4 (Oct-Dic)</option>
+                </select>
+            </label>
+            <label>Año:
+                <input type="number" name="periodo_anio" min="2000" max="2100" required value="{{ periodo_anio }}">
+            </label>
+            <label>Usar fecha:
+                <select name="campo_fecha" id="campo_fecha">
+                    <option value="fecha_factura" {% if campo_fecha == 'fecha_factura' %}selected{% endif %}>Fecha de factura</option>
+                    <option value="fecha_trabajo" {% if campo_fecha == 'fecha_trabajo' %}selected{% endif %}>Fecha de trabajo</option>
+                </select>
+            </label>
             <button type="submit">Ver resultado</button>
             <a href="/" class="menu-btn">Volver al inicio</a>
         </form>
         {% if resultado is not none %}
+            <div class="criterio-fecha">
+                Criterio de fecha aplicado: {{ 'Fecha de factura' if campo_fecha == 'fecha_factura' else 'Fecha de trabajo' }}
+            </div>
             <div class="resumen">
                 <span>Detalle cuentas 7:</span>
             </div>
@@ -244,10 +299,231 @@
                 Resultado neto: <span class="{% if resultado_neto is not none and resultado_neto < 0 %}negativo{% endif %}">{{ '%.2f'|format(resultado_neto) }} €</span>
             </div>
             {% endif %}
+
+            <div class="grafica-container">
+                <h3 class="grafica-titulo">Ingresos y gastos mes a mes</h3>
+                <p class="grafica-subtitulo">Las barras muestran los gastos desglosados por categoría y la línea verde marca los ingresos mensuales.</p>
+                <div class="leyenda-grafica" id="leyenda-grafica">
+                    <span class="leyenda-item"><span class="leyenda-linea"></span>Ingresos</span>
+                </div>
+                <div class="grafica-canvas-wrap">
+                    <canvas id="grafica-mensual" width="1000" height="320"></canvas>
+                </div>
+                <div id="tooltip-grafica" class="tooltip-grafica"></div>
+            </div>
         {% endif %}
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            const tipoPeriodo = document.getElementById('tipo_periodo');
+            const campoMes = document.getElementById('campo_mes');
+            const campoTrimestre = document.getElementById('campo_trimestre');
+
+            function actualizarCamposPeriodo() {
+                const esMes = tipoPeriodo.value === 'mes';
+                campoMes.style.display = esMes ? 'inline-flex' : 'none';
+                campoTrimestre.style.display = esMes ? 'none' : 'inline-flex';
+            }
+
+            tipoPeriodo.addEventListener('change', actualizarCamposPeriodo);
+            actualizarCamposPeriodo();
+
+            const graficaMeses = {{ grafica_meses|tojson if grafica_meses is defined else '[]' }};
+            const graficaCategorias = {{ grafica_categorias|tojson if grafica_categorias is defined else '[]' }};
+            const coloresBase = ['#ef6c00', '#039be5', '#8e24aa', '#fbc02d', '#6d4c41', '#00897b', '#5e35b1', '#c2185b', '#7cb342', '#546e7a'];
+            const coloresCategorias = {};
+            graficaCategorias.forEach((cat, index) => {
+                coloresCategorias[cat] = coloresBase[index % coloresBase.length];
+            });
+
+            function renderLeyenda() {
+                const leyenda = document.getElementById('leyenda-grafica');
+                if (!leyenda) return;
+                graficaCategorias.forEach(cat => {
+                    const item = document.createElement('span');
+                    item.className = 'leyenda-item';
+                    item.innerHTML = `<span class="leyenda-color" style="background:${coloresCategorias[cat]};"></span>${cat}`;
+                    leyenda.appendChild(item);
+                });
+            }
+
+            function dibujarGraficaMensual() {
+                const canvas = document.getElementById('grafica-mensual');
+                if (!canvas || !graficaMeses || graficaMeses.length === 0) return;
+                const ctx = canvas.getContext('2d');
+                const tooltip = document.getElementById('tooltip-grafica');
+                const width = canvas.width;
+                const height = canvas.height;
+                const margin = { top: 20, right: 20, bottom: 60, left: 60 };
+                const chartW = width - margin.left - margin.right;
+                const chartH = height - margin.top - margin.bottom;
+                const hitboxes = [];
+                const hitboxesIngresos = [];
+
+                const maxGastoMes = Math.max(...graficaMeses.map(m => {
+                    let total = 0;
+                    Object.values(m.gastos_por_categoria || {}).forEach(v => total += Number(v || 0));
+                    return total;
+                }), 0);
+                const maxIngresoMes = Math.max(...graficaMeses.map(m => Number(m.ingresos || 0)), 0);
+                const maxY = Math.max(maxGastoMes, maxIngresoMes, 1);
+
+                ctx.clearRect(0, 0, width, height);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
+
+                ctx.strokeStyle = '#cfd8dc';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= 5; i++) {
+                    const y = margin.top + (chartH * i / 5);
+                    ctx.beginPath();
+                    ctx.moveTo(margin.left, y);
+                    ctx.lineTo(width - margin.right, y);
+                    ctx.stroke();
+                }
+
+                const paso = chartW / graficaMeses.length;
+                const anchoBarra = Math.min(52, paso * 0.55);
+
+                graficaMeses.forEach((mes, i) => {
+                    const xCentro = margin.left + (paso * i) + (paso / 2);
+                    let totalGastosMes = 0;
+                    Object.values(mes.gastos_por_categoria || {}).forEach(v => totalGastosMes += Number(v || 0));
+                    const ingresosMes = Number(mes.ingresos || 0);
+                    let acumuladoAltura = 0;
+
+                    graficaCategorias.forEach(cat => {
+                        const valor = Number((mes.gastos_por_categoria || {})[cat] || 0);
+                        if (valor <= 0) return;
+                        const h = (valor / maxY) * chartH;
+                        const y = margin.top + chartH - acumuladoAltura - h;
+                        ctx.fillStyle = coloresCategorias[cat];
+                        ctx.fillRect(xCentro - anchoBarra / 2, y, anchoBarra, h);
+                        hitboxes.push({
+                            x: xCentro - anchoBarra / 2,
+                            y: y,
+                            w: anchoBarra,
+                            h: h,
+                            mes: mes.label,
+                            categoria: cat,
+                            valor: valor,
+                            totalGastosMes: totalGastosMes,
+                            ingresosMes: ingresosMes
+                        });
+                        acumuladoAltura += h;
+                    });
+
+                    ctx.fillStyle = '#263238';
+                    ctx.font = '12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(mes.label, xCentro, height - 20);
+                });
+
+                ctx.strokeStyle = '#2e7d32';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                graficaMeses.forEach((mes, i) => {
+                    const xCentro = margin.left + (paso * i) + (paso / 2);
+                    const ingreso = Number(mes.ingresos || 0);
+                    const y = margin.top + chartH - ((ingreso / maxY) * chartH);
+                    if (i === 0) ctx.moveTo(xCentro, y);
+                    else ctx.lineTo(xCentro, y);
+                });
+                ctx.stroke();
+
+                graficaMeses.forEach((mes, i) => {
+                    const xCentro = margin.left + (paso * i) + (paso / 2);
+                    const ingreso = Number(mes.ingresos || 0);
+                    const y = margin.top + chartH - ((ingreso / maxY) * chartH);
+                    // Halo para que el punto de ingresos se vea aunque solape con barras
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(xCentro, y, 7, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#1b5e20';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#2e7d32';
+                    ctx.beginPath();
+                    ctx.arc(xCentro, y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                    let totalGastosMes = 0;
+                    Object.values(mes.gastos_por_categoria || {}).forEach(v => totalGastosMes += Number(v || 0));
+                    hitboxesIngresos.push({
+                        x: xCentro,
+                        y: y,
+                        r: 12,
+                        mes: mes.label,
+                        ingreso: ingreso,
+                        beneficio: ingreso - totalGastosMes
+                    });
+                });
+
+                function ocultarTooltip() {
+                    if (tooltip) tooltip.style.display = 'none';
+                }
+
+                canvas.addEventListener('mouseleave', ocultarTooltip);
+                canvas.addEventListener('mousemove', function (event) {
+                    if (!tooltip) return;
+                    const rect = canvas.getBoundingClientRect();
+                    const scaleX = canvas.width / rect.width;
+                    const scaleY = canvas.height / rect.height;
+                    const x = (event.clientX - rect.left) * scaleX;
+                    const y = (event.clientY - rect.top) * scaleY;
+
+                    // Primero detectar punto de ingresos para priorizarlo sobre barras solapadas
+                    const puntoIngreso = hitboxesIngresos.find(p => {
+                        const dx = x - p.x;
+                        const dy = y - p.y;
+                        return Math.sqrt((dx * dx) + (dy * dy)) <= p.r;
+                    });
+
+                    if (puntoIngreso) {
+                        tooltip.innerHTML = `
+                            <div><strong>${puntoIngreso.mes}</strong></div>
+                            <div>Ingresos: ${puntoIngreso.ingreso.toFixed(2)} €</div>
+                            <div>Beneficio: ${puntoIngreso.beneficio.toFixed(2)} €</div>
+                        `;
+                        tooltip.style.left = (event.clientX + 14) + 'px';
+                        tooltip.style.top = (event.clientY + 14) + 'px';
+                        tooltip.style.display = 'block';
+                        return;
+                    }
+
+                    const segmento = hitboxes.find(hb =>
+                        x >= hb.x && x <= hb.x + hb.w &&
+                        y >= hb.y && y <= hb.y + hb.h
+                    );
+
+                    if (segmento) {
+                        const pctSobreGastos = segmento.totalGastosMes > 0
+                            ? (segmento.valor / segmento.totalGastosMes) * 100
+                            : 0;
+                        const pctSobreIngresos = segmento.ingresosMes > 0
+                            ? (segmento.valor / segmento.ingresosMes) * 100
+                            : 0;
+                        tooltip.innerHTML = `
+                            <div><strong>${segmento.mes}</strong></div>
+                            <div>Concepto: ${segmento.categoria}</div>
+                            <div>Cantidad: ${segmento.valor.toFixed(2)} €</div>
+                            <div>% sobre gastos: ${pctSobreGastos.toFixed(2)}%</div>
+                            <div>% sobre ingresos: ${pctSobreIngresos.toFixed(2)}%</div>
+                        `;
+                        tooltip.style.left = (event.clientX + 14) + 'px';
+                        tooltip.style.top = (event.clientY + 14) + 'px';
+                        tooltip.style.display = 'block';
+                        return;
+                    }
+
+                    ocultarTooltip();
+                });
+            }
+
+            renderLeyenda();
+            dibujarGraficaMensual();
+
             const tooltips = document.querySelectorAll('.tooltip');
             let currentTooltip = null;
             

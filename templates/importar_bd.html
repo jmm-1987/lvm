@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Importar base de datos</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 20px auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 24px; }
+        h1 { color: #1976d2; margin: 0 0 16px 0; font-size: 1.5em; }
+        .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+        .alert-success { background: #e8f5e9; color: #2e7d32; }
+        .alert-error { background: #ffebee; color: #c62828; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 600; color: #333; }
+        input[type="file"] { padding: 8px; border: 1px solid #ddd; border-radius: 6px; width: 100%; }
+        .btn { display: inline-block; padding: 10px 20px; font-size: 0.95em; background: #1976d2; color: white; border: none; border-radius: 6px; text-decoration: none; cursor: pointer; margin-right: 10px; margin-top: 8px; }
+        .btn:hover { background: #1565c0; }
+        .btn-secondary { background: #757575; }
+        .btn-secondary:hover { background: #616161; }
+        p.hint { font-size: 0.9em; color: #666; margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Importar base de datos</h1>
+        <p class="hint">Sustituye la base de datos actual por el archivo que subas. Se creará una copia de seguridad de la BD actual antes de importar.</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else 'error' }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="post" enctype="multipart/form-data" action="{{ url_for('importar_bd') }}">
+            <div class="form-group">
+                <label for="archivo_db">Archivo .db</label>
+                <input type="file" id="archivo_db" name="archivo_db" accept=".db" required>
+            </div>
+            <button type="submit" class="btn">Importar base de datos</button>
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">Volver al inicio</a>
+        </form>
+    </div>
+</body>
+</html>

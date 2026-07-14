@@ -1,6 +1,10 @@
 import os
 import sqlite3
 import threading
+import shutil
+import json
+from pathlib import Path
+
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, Response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -10,24 +14,34 @@ import csv
 import io
 import zipfile
 import tempfile
-import shutil
 import paramiko
 import re
+import calendar
 import PyPDF2
 from openpyxl import Workbook
+from openpyxl import load_workbook
 from reportlab.lib.pagesizes import A4, letter, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 
-app = Flask(__name__)
-app.secret_key = 'pon_aqui_una_clave_secreta_larga_y_unica'
+# Cargar configuración desde .env (vía config)
+import config as app_config
 
-# Configuración de la base de datos SQLite
-db_path = os.path.join(os.path.dirname(__file__), 'app.db')
-app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app = Flask(__name__)
+app.secret_key = app_config.SECRET_KEY
+
+# Configuración de la base de datos desde .env
+_database_url = app_config.DATABASE_URL
+if _database_url.startswith("sqlite:///"):
+    # Ruta relativa: resolver respecto al directorio del proyecto
+    _db_name = _database_url.replace("sqlite:///", "").strip() or "app.db"
+    _db_path = Path(__file__).resolve().parent / _db_name
+    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{_db_path}"
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = _database_url
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
@@ -111,8 +125,7 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        #lvm_password = os.environ.get('LVM_PASSWORD')
-        lvm_password = "1"
+        lvm_password = app_config.LVM_PASSWORD
         if username == 'lvm' and lvm_password and password == lvm_password:
             user = UsuarioFalso('lvm')
             login_user(user)
@@ -631,26 +644,64 @@ def resultado_explotacion():
     resultado = None
     detalle = []
     diferencia = None
-    # Calcular fechas por defecto
+
+    def calcular_rango_periodo(tipo_periodo, periodo_anio, periodo_mes, periodo_trimestre):
+        if tipo_periodo == 'trimestre':
+            trimestre_a_inicio = {'Q1': 1, 'Q2': 4, 'Q3': 7, 'Q4': 10}
+            inicio_mes = trimestre_a_inicio.get(periodo_trimestre, 1)
+            fin_mes = inicio_mes + 2
+            inicio = datetime(periodo_anio, inicio_mes, 1)
+            fin = datetime(periodo_anio, fin_mes, calendar.monthrange(periodo_anio, fin_mes)[1])
+        else:
+            inicio = datetime(periodo_anio, periodo_mes, 1)
+            fin = datetime(periodo_anio, periodo_mes, calendar.monthrange(periodo_anio, periodo_mes)[1])
+        return inicio.strftime('%Y-%m-%d'), fin.strftime('%Y-%m-%d')
+
+    # Valores por defecto
     hoy = datetime.today()
-    mes = hoy.month
-    if mes <= 3:
-        inicio_trimestre = datetime(hoy.year, 1, 1)
-    elif mes <= 6:
-        inicio_trimestre = datetime(hoy.year, 4, 1)
-    elif mes <= 9:
-        inicio_trimestre = datetime(hoy.year, 7, 1)
-    else:
-        inicio_trimestre = datetime(hoy.year, 10, 1)
-    fecha_inicio = inicio_trimestre.strftime('%Y-%m-%d')
-    fecha_fin = hoy.strftime('%Y-%m-%d')
+    tipo_periodo = 'mes'
+    periodo_anio = hoy.year
+    periodo_mes = hoy.month
+    periodo_trimestre = f"Q{((hoy.month - 1) // 3) + 1}"
+    campo_fecha = 'fecha_factura'
+    fecha_inicio, fecha_fin = calcular_rango_periodo(tipo_periodo, periodo_anio, periodo_mes, periodo_trimestre)
+
+    meses_disponibles = [
+        (1, 'Enero'), (2, 'Febrero'), (3, 'Marzo'), (4, 'Abril'),
+        (5, 'Mayo'), (6, 'Junio'), (7, 'Julio'), (8, 'Agosto'),
+        (9, 'Septiembre'), (10, 'Octubre'), (11, 'Noviembre'), (12, 'Diciembre')
+    ]
+
     resultado_explotacion = None
     suma_resultado_neto = 0
     resultado_neto = 0
     detalle_resultado_neto = []
+    suma_7 = 0
+    suma_resto = 0
+    grafica_meses = []
+    grafica_categorias = []
+
     if request.method == 'POST':
-        fecha_inicio = request.form['fecha_inicio']
-        fecha_fin = request.form['fecha_fin']
+        tipo_periodo = request.form.get('tipo_periodo', 'mes')
+        campo_fecha_form = request.form.get('campo_fecha', 'fecha_factura')
+        campo_fecha = campo_fecha_form if campo_fecha_form in ('fecha_factura', 'fecha_trabajo') else 'fecha_factura'
+        periodo_trimestre = request.form.get('periodo_trimestre', periodo_trimestre)
+        try:
+            periodo_anio = int(request.form.get('periodo_anio', periodo_anio))
+        except (TypeError, ValueError):
+            periodo_anio = hoy.year
+        try:
+            periodo_mes = int(request.form.get('periodo_mes', periodo_mes))
+        except (TypeError, ValueError):
+            periodo_mes = hoy.month
+
+        if periodo_mes < 1 or periodo_mes > 12:
+            periodo_mes = hoy.month
+        if periodo_trimestre not in ('Q1', 'Q2', 'Q3', 'Q4'):
+            periodo_trimestre = f"Q{((hoy.month - 1) // 3) + 1}"
+
+        fecha_inicio, fecha_fin = calcular_rango_periodo(tipo_periodo, periodo_anio, periodo_mes, periodo_trimestre)
+
         # Buscar conceptos en ese rango de fechas
         # Convertir fechas de YYYY-MM-DD a objetos datetime para la comparación
         fecha_inicio_dt, fecha_fin_dt = convertir_fechas_para_filtro(fecha_inicio, fecha_fin)
@@ -663,7 +714,8 @@ def resultado_explotacion():
         # Filtrar por fecha usando comparación de datetime
         conceptos_filtrados = []
         for c in conceptos:
-            fecha_movimiento = parsear_fecha_robusto(c.Movimiento.fecha_factura)
+            fecha_referencia = getattr(c.Movimiento, campo_fecha, None)
+            fecha_movimiento = parsear_fecha_robusto(fecha_referencia)
             if fecha_movimiento and fecha_inicio_dt <= fecha_movimiento <= fecha_fin_dt:
                 conceptos_filtrados.append(c)
         
@@ -672,7 +724,7 @@ def resultado_explotacion():
         # Debug: imprimir información sobre los conceptos encontrados
         print(f"Conceptos encontrados en rango {fecha_inicio} a {fecha_fin}: {len(conceptos)}")
         for c in conceptos:
-            print(f"Cuenta: {c.Cuenta.cuenta} - {c.Cuenta.nombre}, Importe: {c.MovimientoConcepto.importe}, Fecha: {c.Movimiento.fecha_factura}")
+            print(f"Cuenta: {c.Cuenta.cuenta} - {c.Cuenta.nombre}, Importe: {c.MovimientoConcepto.importe}, Fecha: {getattr(c.Movimiento, campo_fecha, None)}")
         
         # Buscar específicamente las nóminas
         nominas = db.session.query(MovimientoConcepto, Movimiento, Cuenta)\
@@ -685,7 +737,8 @@ def resultado_explotacion():
         # Filtrar nóminas por fecha usando comparación de datetime
         nominas_filtradas = []
         for n in nominas:
-            fecha_movimiento = parsear_fecha_robusto(n.Movimiento.fecha_factura)
+            fecha_referencia = getattr(n.Movimiento, campo_fecha, None)
+            fecha_movimiento = parsear_fecha_robusto(fecha_referencia)
             if fecha_movimiento and fecha_inicio_dt <= fecha_movimiento <= fecha_fin_dt:
                 nominas_filtradas.append(n)
         
@@ -699,9 +752,32 @@ def resultado_explotacion():
         prefijos = ('623','626','621','622','625','628','629','310','640','641','642','649','662','7')
         cuentas_excluidas = ('642000000002',)  # Cuentas específicas a excluir del resultado de explotación
         cuentas_resultado_neto = ('74000000002', '76900000001')  # Cuentas que se suman al resultado neto
+        meses_nombres = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+        grafica_dict = {}
+
+        # La gráfica debe respetar exactamente el periodo elegido arriba
+        meses_grafica = []
+        if tipo_periodo == 'trimestre':
+            trimestre_a_inicio = {'Q1': 1, 'Q2': 4, 'Q3': 7, 'Q4': 10}
+            mes_inicio = trimestre_a_inicio.get(periodo_trimestre, 1)
+            meses_grafica = [mes_inicio, mes_inicio + 1, mes_inicio + 2]
+        else:
+            meses_grafica = [periodo_mes]
+
+        for mes_grafica in meses_grafica:
+            key_mes = f"{periodo_anio:04d}-{mes_grafica:02d}"
+            grafica_dict[key_mes] = {
+                'label': f"{meses_nombres[mes_grafica - 1]} {periodo_anio}",
+                'ingresos': 0.0,
+                'gastos_por_categoria': {}
+            }
+
         detalle_dict = {}
         for c in conceptos:
             cuenta = str(c.Cuenta.cuenta)
+            fecha_ref_mov = getattr(c.Movimiento, campo_fecha, None)
+            fecha_movimiento = parsear_fecha_robusto(fecha_ref_mov)
+            mes_key = f"{fecha_movimiento.year:04d}-{fecha_movimiento.month:02d}" if fecha_movimiento else None
             # Verificar si la cuenta empieza con alguno de los prefijos
             incluir_cuenta = False
             for prefijo in prefijos:
@@ -714,6 +790,15 @@ def resultado_explotacion():
                 incluir_cuenta = False
             
             if incluir_cuenta:
+                if mes_key and mes_key in grafica_dict:
+                    if cuenta.startswith('7'):
+                        grafica_dict[mes_key]['ingresos'] += c.MovimientoConcepto.importe
+                    else:
+                        nombre_categoria = (c.Cuenta.nombre or '').strip() or f"Cuenta {cuenta}"
+                        if nombre_categoria not in grafica_dict[mes_key]['gastos_por_categoria']:
+                            grafica_dict[mes_key]['gastos_por_categoria'][nombre_categoria] = 0.0
+                        grafica_dict[mes_key]['gastos_por_categoria'][nombre_categoria] += c.MovimientoConcepto.importe
+
                 key = cuenta
                 if key not in detalle_dict:
                     detalle_dict[key] = {
@@ -731,7 +816,7 @@ def resultado_explotacion():
                     contrapartida_info = "Sin contrapartida"
                 
                 transaccion = {
-                    'fecha': c.Movimiento.fecha_factura,
+                    'fecha': getattr(c.Movimiento, campo_fecha, None),
                     'contrapartida': contrapartida_info,
                     'importe': c.MovimientoConcepto.importe,
                     'concepto': c.MovimientoConcepto.concepto or "Sin concepto"
@@ -779,7 +864,7 @@ def resultado_explotacion():
                             contrapartida_info = "Sin contrapartida"
                         
                         transaccion = {
-                            'fecha': c.Movimiento.fecha_factura,
+                            'fecha': getattr(c.Movimiento, campo_fecha, None),
                             'contrapartida': contrapartida_info,
                             'importe': c.MovimientoConcepto.importe,
                             'concepto': c.MovimientoConcepto.concepto or "Sin concepto"
@@ -789,12 +874,51 @@ def resultado_explotacion():
         
         # Calcular resultado neto
         resultado_neto = resultado_explotacion + suma_resultado_neto
+
+        grafica_meses = []
+        categorias_activas = set()
+        for key_mes in sorted(grafica_dict.keys()):
+            gastos_abs = {}
+            for categoria, importe in grafica_dict[key_mes]['gastos_por_categoria'].items():
+                valor_abs = abs(importe)
+                gastos_abs[categoria] = valor_abs
+                if valor_abs > 0:
+                    categorias_activas.add(categoria)
+            grafica_meses.append({
+                'label': grafica_dict[key_mes]['label'],
+                'ingresos': abs(grafica_dict[key_mes]['ingresos']),
+                'gastos_por_categoria': gastos_abs
+            })
+        grafica_categorias = sorted(categorias_activas)
     
     # Formatear fechas para mostrar (siempre)
     fecha_inicio_formateada = datetime.strptime(fecha_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
     fecha_fin_formateada = datetime.strptime(fecha_fin, '%Y-%m-%d').strftime('%d/%m/%Y')
     
-    return render_template('resultado_explotacion.html', resultado=resultado, detalle=detalle, diferencia=diferencia, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, fecha_inicio_formateada=fecha_inicio_formateada, fecha_fin_formateada=fecha_fin_formateada, resultado_explotacion=resultado_explotacion, suma_resultado_neto=suma_resultado_neto, resultado_neto=resultado_neto, detalle_resultado_neto=detalle_resultado_neto)
+    return render_template(
+        'resultado_explotacion.html',
+        resultado=resultado,
+        detalle=detalle,
+        diferencia=diferencia,
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
+        fecha_inicio_formateada=fecha_inicio_formateada,
+        fecha_fin_formateada=fecha_fin_formateada,
+        resultado_explotacion=resultado_explotacion,
+        suma_resultado_neto=suma_resultado_neto,
+        resultado_neto=resultado_neto,
+        detalle_resultado_neto=detalle_resultado_neto,
+        tipo_periodo=tipo_periodo,
+        periodo_anio=periodo_anio,
+        periodo_mes=periodo_mes,
+        periodo_trimestre=periodo_trimestre,
+        meses_disponibles=meses_disponibles,
+        campo_fecha=campo_fecha,
+        total_ingresos=suma_7,
+        total_gastos=suma_resto,
+        grafica_meses=grafica_meses,
+        grafica_categorias=grafica_categorias
+    )
 
 @app.route('/iva', methods=['GET', 'POST'])
 def resultado_iva():
@@ -1015,6 +1139,201 @@ def cancelar_declarado():
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
+@app.route('/proponer_declarados_desde_excel', methods=['POST'])
+@login_required
+def proponer_declarados_desde_excel():
+    """Compara un Excel de libro IVA y devuelve propuestas por fecha+importe IVA."""
+    try:
+        archivo = request.files.get('archivo_iva')
+        movimientos_raw = request.form.get('movimientos', '[]')
+        tipo_propuesta = (request.form.get('tipo_propuesta') or '').strip().lower()
+
+        if not archivo:
+            return jsonify({'success': False, 'message': 'No se ha subido ningún archivo'}), 400
+
+        nombre_archivo = (archivo.filename or '').lower()
+        if not nombre_archivo.endswith('.xlsx'):
+            return jsonify({'success': False, 'message': 'Formato no válido. Sube un archivo .xlsx'}), 400
+
+        try:
+            movimientos = json.loads(movimientos_raw)
+        except Exception:
+            return jsonify({'success': False, 'message': 'No se pudieron leer los movimientos enviados'}), 400
+
+        if not isinstance(movimientos, list) or not movimientos:
+            return jsonify({'success': False, 'message': 'No hay movimientos para comparar'}), 400
+
+        def normalizar_importe(valor):
+            if valor is None:
+                return None
+            if isinstance(valor, (int, float)):
+                return round(abs(float(valor)), 2)
+            valor_str = str(valor).strip().replace('€', '').replace(' ', '')
+            valor_str = valor_str.replace('.', '').replace(',', '.')
+            try:
+                return round(abs(float(valor_str)), 2)
+            except ValueError:
+                return None
+
+        # Índice de movimientos mostrados en pantalla por (fecha, importe).
+        index_movimientos = {}
+        movimientos_norm = []
+        for m in movimientos:
+            tipo = (m.get('tipo') or '').strip().lower()
+            if tipo_propuesta in ('soportado', 'repercutido') and tipo != tipo_propuesta:
+                continue
+            mid = m.get('id')
+            fecha_dt = parsear_fecha_robusto(str(m.get('fecha', '')).strip())
+            importe_norm = normalizar_importe(m.get('importe'))
+            if not mid or not fecha_dt or importe_norm is None:
+                continue
+            fecha_iso = fecha_dt.date().isoformat()
+            clave = (fecha_iso, importe_norm)
+            index_movimientos.setdefault(clave, []).append(int(mid))
+            movimientos_norm.append({
+                'id': int(mid),
+                'fecha': fecha_iso,
+                'importe': importe_norm
+            })
+
+        if not index_movimientos:
+            return jsonify({'success': False, 'message': 'No hay movimientos válidos para comparar'}), 400
+
+        libro = load_workbook(filename=io.BytesIO(archivo.read()), data_only=True)
+        hoja = libro[libro.sheetnames[0]]
+
+        def _norm_header(txt):
+            if not txt:
+                return ''
+            t = str(txt).strip().lower()
+            for a, b in (('á', 'a'), ('é', 'e'), ('í', 'i'), ('ó', 'o'), ('ú', 'u')):
+                t = t.replace(a, b)
+            return ' '.join(t.split())
+
+        col_fecha = None
+        col_cuota_iva = None
+        claves_excel = set()
+        log_detalle_lineas = []
+        max_log_detalle = 300
+
+        for num_fila, fila in enumerate(hoja.iter_rows(values_only=True), start=1):
+            if not fila:
+                continue
+
+            # Detectar cabeceras si existen en la fila
+            if col_fecha is None or col_cuota_iva is None:
+                for idx, celda in enumerate(fila):
+                    if celda is None:
+                        continue
+                    texto = _norm_header(celda)
+                    if col_fecha is None and texto == 'fecha':
+                        col_fecha = idx
+                    if col_cuota_iva is None and 'cuota' in texto and 'iva' in texto:
+                        col_cuota_iva = idx
+
+            # Fallback para formato habitual del libro de registro exportado
+            idx_fecha = col_fecha if col_fecha is not None else 7
+            idx_cuota = col_cuota_iva if col_cuota_iva is not None else 48
+            if len(fila) <= max(idx_fecha, idx_cuota):
+                continue
+
+            fecha_val = fila[idx_fecha]
+            cuota_val = fila[idx_cuota]
+            if fecha_val in (None, '') or cuota_val in (None, ''):
+                continue
+
+            if isinstance(fecha_val, datetime):
+                fecha_dt = fecha_val
+            else:
+                fecha_dt = parsear_fecha_robusto(str(fecha_val).strip())
+
+            cuota_norm = normalizar_importe(cuota_val)
+            if not fecha_dt or cuota_norm is None:
+                continue
+
+            fecha_iso = fecha_dt.date().isoformat()
+            claves_excel.add((fecha_iso, cuota_norm))
+
+            if len(log_detalle_lineas) < max_log_detalle:
+                log_detalle_lineas.append(
+                    f"Fila {num_fila}: fecha_raw={fecha_val!r}, cuota_raw={cuota_val!r}, "
+                    f"fecha_norm={fecha_iso}, cuota_norm={cuota_norm:.2f}"
+                )
+
+        propuestos = set()
+        exactas = 0
+        fallback_fecha_importe = 0
+        fallback_solo_importe = 0
+        for clave in claves_excel:
+            ids = index_movimientos.get(clave, [])
+            for mid in ids:
+                if mid not in propuestos:
+                    exactas += 1
+                propuestos.add(mid)
+
+        def _fecha_mas_dias(fecha_iso, dias):
+            try:
+                d = datetime.strptime(fecha_iso, '%Y-%m-%d').date()
+                return (d + timedelta(days=dias)).isoformat()
+            except ValueError:
+                return None
+
+        # Fallback 1: tolerancia de importe y ±1 día (redondeos / huso).
+        if not propuestos:
+            for fecha_excel, imp_excel in claves_excel:
+                fechas_probar = {fecha_excel}
+                for delta in (-1, 1):
+                    alt = _fecha_mas_dias(fecha_excel, delta)
+                    if alt:
+                        fechas_probar.add(alt)
+                for mov in movimientos_norm:
+                    if mov['fecha'] not in fechas_probar:
+                        continue
+                    if abs(mov['importe'] - imp_excel) <= 0.05:
+                        if mov['id'] not in propuestos:
+                            fallback_fecha_importe += 1
+                        propuestos.add(mov['id'])
+
+        # Fallback 2: si sigue a 0, cruzar solo por importe (con tolerancia) en importes "raros"
+        # para evitar dejar vacío cuando haya descuadre sistemático de fechas.
+        if not propuestos:
+            importes_excel = sorted({imp for _, imp in claves_excel})
+            for mov in movimientos_norm:
+                for imp_excel in importes_excel:
+                    if abs(mov['importe'] - imp_excel) <= 0.01:
+                        if mov['id'] not in propuestos:
+                            fallback_solo_importe += 1
+                        propuestos.add(mov['id'])
+                        break
+
+        log_lineas = [
+            f"Tipo de propuesta: {tipo_propuesta or 'todos'}",
+            f"Movimientos recibidos: {len(movimientos)}",
+            f"Movimientos válidos comparados: {len(movimientos_norm)}",
+            f"Claves válidas extraídas del Excel: {len(claves_excel)}",
+            f"Coincidencias exactas (fecha+importe): {exactas}",
+            f"Coincidencias fallback fecha±1 + importe: {fallback_fecha_importe}",
+            f"Coincidencias fallback solo importe: {fallback_solo_importe}",
+            f"Total propuestas marcadas: {len(propuestos)}",
+        ]
+        if len(log_detalle_lineas) >= max_log_detalle:
+            log_lineas.append(f"Detalle por fila truncado a {max_log_detalle} líneas.")
+
+        return jsonify({
+            'success': True,
+            'message': (
+                f"Se han encontrado {len(propuestos)} propuestas por fecha e importe "
+                f"(tipo: {tipo_propuesta or 'todos'}, movimientos comparados: {len(movimientos_norm)}, claves Excel: {len(claves_excel)})"
+            ),
+            'propuestos': sorted(list(propuestos)),
+            'coincidencias_excel': len(claves_excel),
+            'log': log_lineas,
+            'log_detalle': log_detalle_lineas
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error al procesar el fichero: {str(e)}'}), 500
+
 @app.route('/retencion_alquileres', methods=['GET', 'POST'])
 def retencion_alquileres():
     # Fechas por defecto: inicio de trimestre y hoy
@@ -1209,11 +1528,25 @@ def informe_347():
                          total_importe_menos_3000=total_importe_menos_3000)
 
 @app.route('/descargar_db')
+@login_required
 def descargar_db():
-    db_path = os.path.join(os.path.dirname(__file__), 'app.db')
-    fecha = datetime.now().strftime('%Y%m%d')
-    nombre_archivo = f'lvm{fecha}.db'
-    return send_file(db_path, as_attachment=True, download_name=nombre_archivo)
+    """Descargar la base de datos SQLite actual al equipo del usuario."""
+    uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    if not uri.startswith('sqlite:///'):
+        flash('La descarga directa solo está disponible para base de datos SQLite.', 'error')
+        return redirect(url_for('index'))
+
+    db_path = Path(uri.replace('sqlite:///', '').strip())
+    if not db_path.is_absolute():
+        db_path = Path(__file__).resolve().parent / db_path
+
+    if not db_path.exists():
+        flash(f'No se encontró la base de datos en: {db_path}', 'error')
+        return redirect(url_for('index'))
+
+    fecha_hora = datetime.now().strftime('%Y%m%d_%H%M%S')
+    nombre_archivo = f'lvm_backup_{fecha_hora}.db'
+    return send_file(str(db_path), as_attachment=True, download_name=nombre_archivo)
 
 # Función para subir la base de datos por SFTP
 
@@ -2504,6 +2837,51 @@ def borrar_viaje(id):
         flash(f'Error al borrar el viaje: {str(e)}', 'error')
     return redirect(url_for('control_xpo'))
 
+@app.route('/admin/importar_bd', methods=['GET', 'POST'])
+@login_required
+def importar_bd():
+    """Importar base de datos completa (sustituye la actual; se hace copia de seguridad)."""
+    if request.method == 'GET':
+        return render_template('importar_bd.html')
+
+    archivo = request.files.get('archivo_db')
+    if not archivo or archivo.filename == '':
+        flash('No se ha seleccionado ningún archivo.', 'error')
+        return redirect(url_for('importar_bd'))
+
+    if not archivo.filename.lower().endswith('.db'):
+        flash('El archivo debe tener extensión .db', 'error')
+        return redirect(url_for('importar_bd'))
+
+    uri = app.config['SQLALCHEMY_DATABASE_URI']
+    if not uri.startswith('sqlite:///'):
+        flash('La importación solo está soportada para base de datos SQLite.', 'error')
+        return redirect(url_for('importar_bd'))
+
+    db_path = Path(uri.replace('sqlite:///', '').strip())
+    if not db_path.is_absolute():
+        db_path = Path(__file__).resolve().parent / db_path
+
+    try:
+        # Cerrar conexiones antes de tocar el archivo
+        db.session.remove()
+        db.engine.dispose()
+
+        # Copia de seguridad de la BD actual
+        if db_path.exists():
+            backup_path = db_path.parent / f"{db_path.stem}_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}{db_path.suffix}"
+            shutil.copy2(db_path, backup_path)
+
+        # Guardar el archivo subido como nueva BD
+        archivo.save(str(db_path))
+
+        flash('Base de datos importada correctamente. Se creó una copia de seguridad de la anterior.', 'success')
+    except Exception as e:
+        app.logger.exception('Error al importar BD')
+        flash(f'Error al importar la base de datos: {e}', 'error')
+
+    return redirect(url_for('importar_bd'))
+
 @app.route('/api/telegram/webhook', methods=['POST'])
 def telegram_webhook():
     """Endpoint para recibir datos del bot de Telegram"""
@@ -2656,8 +3034,8 @@ def iniciar_bot_telegram():
         import config
         
         # Verificar que el token esté configurado
-        if not config.TELEGRAM_BOT_TOKEN or config.TELEGRAM_BOT_TOKEN == 'TU_TOKEN_AQUI':
-            print("⚠️  Bot de Telegram no iniciado: Token no configurado en config.py")
+        if not config.TELEGRAM_BOT_TOKEN:
+            print("⚠️  Bot de Telegram no iniciado: TELEGRAM_BOT_TOKEN no configurado en .env")
             print("   La aplicación Flask funcionará normalmente sin el bot.")
             return
         

@@ -29,7 +29,7 @@ def extraer_datos_imagen_openai(image_url):
     """
     Extrae datos de la imagen usando OpenAI Vision API
     """
-    if not config.OPENAI_API_KEY or config.OPENAI_API_KEY == 'TU_OPENAI_API_KEY_AQUI':
+    if not config.OPENAI_API_KEY:
         logger.error("OpenAI API Key no configurada")
         return None
     
@@ -371,9 +371,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Función principal para iniciar el bot"""
     # Verificar que el token esté configurado
-    if not config.TELEGRAM_BOT_TOKEN or config.TELEGRAM_BOT_TOKEN == 'TU_TOKEN_AQUI':
+    if not config.TELEGRAM_BOT_TOKEN:
         print("❌ ERROR: No se ha configurado el token del bot de Telegram")
-        print("Por favor, edita config.py y añade tu TELEGRAM_BOT_TOKEN")
+        print("Por favor, configura TELEGRAM_BOT_TOKEN en el archivo .env")
         sys.exit(1)
     
     # Crear aplicación

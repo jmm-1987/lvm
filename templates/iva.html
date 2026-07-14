@@ -43,6 +43,9 @@
         .btn-close:hover { background: #5a6268; }
         .iva-table tr { cursor: pointer; transition: background-color 0.2s; }
         .iva-table tr:hover { background-color: #f8f9fa; }
+        .log-list { margin: 0; padding-left: 18px; }
+        .log-list li { margin-bottom: 6px; color: #333; }
+        .log-detalle { margin-top: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 10px; max-height: 260px; overflow: auto; font-family: Consolas, monospace; font-size: 0.85em; white-space: pre-wrap; }
     </style>
 </head>
 <body>
@@ -99,6 +102,11 @@
                     <input type="text" id="trimestre-input" placeholder="Trimestre (ej: 2025Q3)" style="padding:8px; border:1px solid #ccc; border-radius:4px; width:150px;">
                     <button type="button" id="marcar-declarados" style="padding:10px 20px; background:#4caf50; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">✅ Marcar como Declarados</button>
                     <button type="button" id="cancelar-declarados" style="padding:10px 20px; background:#f44336; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">❌ Cancelar Declaraciones</button>
+                </div>
+                <div style="display:flex; justify-content:center; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px;">
+                    <input type="file" id="archivo-propuesta-iva" accept=".xlsx" style="padding:8px; border:1px solid #ccc; border-radius:4px; background:white;">
+                    <button type="button" id="proponer-soportado" style="padding:10px 16px; background:#1976d2; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">📎 Proponer Soportado (472)</button>
+                    <button type="button" id="proponer-repercutido" style="padding:10px 16px; background:#2e7d32; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">📎 Proponer Repercutido (477)</button>
                 </div>
                 <div id="mensaje-operacion" style="margin-top:10px; font-weight:bold;"></div>
                 <!-- Resultado en tiempo real -->
@@ -249,6 +257,16 @@
             return Array.from(selectedCheckboxes).map(checkbox => parseInt(checkbox.dataset.id));
         }
 
+        function getVisibleMovementsForMatching(tipoFiltro) {
+            const selector = tipoFiltro ? `.movimiento-row[data-tipo="${tipoFiltro}"]` : '.movimiento-row';
+            return Array.from(document.querySelectorAll(selector)).map(row => ({
+                id: parseInt(row.dataset.id),
+                fecha: row.dataset.fecha,
+                importe: row.dataset.importe,
+                tipo: row.dataset.tipo || ''
+            })).filter(m => !Number.isNaN(m.id) && m.fecha && m.importe);
+        }
+
         function showMessage(message, isError = false) {
             const messageDiv = document.getElementById('mensaje-operacion');
             messageDiv.textContent = message;
@@ -258,6 +276,25 @@
             setTimeout(() => {
                 messageDiv.style.display = 'none';
             }, 5000);
+        }
+
+        async function safeJsonResponse(response, defaultErrorMessage) {
+            const contentType = response.headers.get('content-type') || '';
+            const isJson = contentType.includes('application/json');
+
+            if (!isJson) {
+                const bodyText = await response.text();
+                if (bodyText.toLowerCase().includes('<!doctype') || bodyText.toLowerCase().includes('<html')) {
+                    throw new Error(`${defaultErrorMessage}. El servidor devolvió HTML (posible sesión caducada o backend sin actualizar).`);
+                }
+                throw new Error(`${defaultErrorMessage}. Respuesta no JSON del servidor.`);
+            }
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.message || defaultErrorMessage);
+            }
+            return data;
         }
 
         function calcularResultadoTiempoReal() {
@@ -441,6 +478,28 @@
             modal.style.display = 'none';
         }
 
+        function openLogModal(logLines, detalleLines) {
+            const modal = document.getElementById('logModal');
+            const body = document.getElementById('logBody');
+            if (!Array.isArray(logLines) || logLines.length === 0) {
+                body.innerHTML = '<p>No hay datos de log disponibles.</p>';
+            } else {
+                const resumen = `<ul class="log-list">${logLines.map(line => `<li>${line}</li>`).join('')}</ul>`;
+                let detalle = '';
+                if (Array.isArray(detalleLines) && detalleLines.length > 0) {
+                    detalle = `<h4 style="margin:14px 0 8px 0; color:#1976d2;">Detalle por fila extraída</h4>
+                               <div class="log-detalle">${detalleLines.join('\n')}</div>`;
+                }
+                body.innerHTML = resumen + detalle;
+            }
+            modal.style.display = 'block';
+        }
+
+        function closeLogModal() {
+            const modal = document.getElementById('logModal');
+            modal.style.display = 'none';
+        }
+
         // Event listeners
         document.addEventListener('DOMContentLoaded', function() {
             // Event listeners para el modal
@@ -461,6 +520,10 @@
             document.addEventListener('keydown', function(event) {
                 if (event.key === 'Escape' && modal.style.display === 'block') {
                     closeModal();
+                }
+                const logModal = document.getElementById('logModal');
+                if (event.key === 'Escape' && logModal.style.display === 'block') {
+                    closeLogModal();
                 }
             });
             
@@ -545,6 +608,59 @@
                 updateSelectAllCheckbox('repercutido');
                 updateSelectAllCheckbox('soportado');
                 calcularResultadoTiempoReal();
+            });
+
+            function ejecutarPropuestaDesdeFichero(tipoPropuesta) {
+                const inputArchivo = document.getElementById('archivo-propuesta-iva');
+                if (!inputArchivo.files || inputArchivo.files.length === 0) {
+                    showMessage('Selecciona un fichero Excel (.xlsx) para generar propuestas', true);
+                    return;
+                }
+
+                const movimientos = getVisibleMovementsForMatching(tipoPropuesta);
+                if (movimientos.length === 0) {
+                    showMessage(`No hay movimientos visibles de tipo ${tipoPropuesta} para comparar`, true);
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('archivo_iva', inputArchivo.files[0]);
+                formData.append('movimientos', JSON.stringify(movimientos));
+                formData.append('tipo_propuesta', tipoPropuesta);
+
+                fetch('/proponer_declarados_desde_excel', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => safeJsonResponse(response, 'Error al comparar el fichero'))
+                .then(data => {
+                    if (!data.success) {
+                        showMessage(data.message || 'No se pudieron generar propuestas', true);
+                        return;
+                    }
+
+                    const propuestos = new Set((data.propuestos || []).map(id => Number(id)));
+                    document.querySelectorAll('.movimiento-checkbox').forEach(checkbox => {
+                        checkbox.checked = propuestos.has(Number(checkbox.dataset.id));
+                    });
+
+                    updateSelectAllCheckbox('repercutido');
+                    updateSelectAllCheckbox('soportado');
+                    calcularResultadoTiempoReal();
+                    showMessage(`${data.message}. Marcados ${propuestos.size} movimientos como propuesta.`);
+                    openLogModal(data.log || [], data.log_detalle || []);
+                })
+                .catch(error => {
+                    showMessage('Error al comparar el fichero: ' + error.message, true);
+                });
+            }
+
+            document.getElementById('proponer-soportado').addEventListener('click', function() {
+                ejecutarPropuestaDesdeFichero('soportado');
+            });
+
+            document.getElementById('proponer-repercutido').addEventListener('click', function() {
+                ejecutarPropuestaDesdeFichero('repercutido');
             });
 
             // Mark as declared button
@@ -646,6 +762,20 @@
             </div>
             <div class="modal-footer">
                 <button class="btn-close" onclick="closeModal()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de log de propuesta -->
+    <div id="logModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">🧾 Log de propuesta IVA</h2>
+                <span class="close" onclick="closeLogModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="logBody"></div>
+            <div class="modal-footer">
+                <button class="btn-close" onclick="closeLogModal()">Cerrar</button>
             </div>
         </div>
     </div>
