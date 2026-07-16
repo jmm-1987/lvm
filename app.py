@@ -749,7 +749,7 @@ def resultado_explotacion():
             print(f"Nómina: {n.Movimiento.num_factura}, Cuenta: {n.Cuenta.cuenta} - {n.Cuenta.nombre}, Importe: {n.MovimientoConcepto.importe}")
         
         # Agrupar y sumar importes por cuenta, incluyendo detalles de transacciones
-        prefijos = ('623','626','621','622','625','628','629','310','640','641','642','649','662','7')
+        prefijos = ('623','626','621','622','625','628','629','310','640','641','642','649','662','678','7')
         cuentas_excluidas = ('642000000002',)  # Cuentas específicas a excluir del resultado de explotación
         cuentas_resultado_neto = ('74000000002', '76900000001')  # Cuentas que se suman al resultado neto
         meses_nombres = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
