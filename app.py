@@ -646,7 +646,10 @@ def resultado_explotacion():
     diferencia = None
 
     def calcular_rango_periodo(tipo_periodo, periodo_anio, periodo_mes, periodo_trimestre):
-        if tipo_periodo == 'trimestre':
+        if tipo_periodo == 'anio':
+            inicio = datetime(periodo_anio, 1, 1)
+            fin = datetime(periodo_anio, 12, 31)
+        elif tipo_periodo == 'trimestre':
             trimestre_a_inicio = {'Q1': 1, 'Q2': 4, 'Q3': 7, 'Q4': 10}
             inicio_mes = trimestre_a_inicio.get(periodo_trimestre, 1)
             fin_mes = inicio_mes + 2
@@ -683,6 +686,8 @@ def resultado_explotacion():
 
     if request.method == 'POST':
         tipo_periodo = request.form.get('tipo_periodo', 'mes')
+        if tipo_periodo not in ('mes', 'trimestre', 'anio'):
+            tipo_periodo = 'mes'
         campo_fecha_form = request.form.get('campo_fecha', 'fecha_factura')
         campo_fecha = campo_fecha_form if campo_fecha_form in ('fecha_factura', 'fecha_trabajo') else 'fecha_factura'
         periodo_trimestre = request.form.get('periodo_trimestre', periodo_trimestre)
@@ -757,7 +762,9 @@ def resultado_explotacion():
 
         # La gráfica debe respetar exactamente el periodo elegido arriba
         meses_grafica = []
-        if tipo_periodo == 'trimestre':
+        if tipo_periodo == 'anio':
+            meses_grafica = list(range(1, 13))
+        elif tipo_periodo == 'trimestre':
             trimestre_a_inicio = {'Q1': 1, 'Q2': 4, 'Q3': 7, 'Q4': 10}
             mes_inicio = trimestre_a_inicio.get(periodo_trimestre, 1)
             meses_grafica = [mes_inicio, mes_inicio + 1, mes_inicio + 2]

@@ -192,17 +192,18 @@
                 <select name="tipo_periodo" id="tipo_periodo">
                     <option value="mes" {% if tipo_periodo == 'mes' %}selected{% endif %}>Mes completo</option>
                     <option value="trimestre" {% if tipo_periodo == 'trimestre' %}selected{% endif %}>Trimestre completo</option>
+                    <option value="anio" {% if tipo_periodo == 'anio' %}selected{% endif %}>Año completo</option>
                 </select>
             </label>
             <label id="campo_mes">Mes:
-                <select name="periodo_mes">
+                <select name="periodo_mes" id="periodo_mes">
                     {% for numero_mes, nombre_mes in meses_disponibles %}
                         <option value="{{ numero_mes }}" {% if periodo_mes == numero_mes %}selected{% endif %}>{{ nombre_mes }}</option>
                     {% endfor %}
                 </select>
             </label>
             <label id="campo_trimestre">Trimestre:
-                <select name="periodo_trimestre">
+                <select name="periodo_trimestre" id="periodo_trimestre">
                     <option value="Q1" {% if periodo_trimestre == 'Q1' %}selected{% endif %}>Q1 (Ene-Mar)</option>
                     <option value="Q2" {% if periodo_trimestre == 'Q2' %}selected{% endif %}>Q2 (Abr-Jun)</option>
                     <option value="Q3" {% if periodo_trimestre == 'Q3' %}selected{% endif %}>Q3 (Jul-Sep)</option>
@@ -318,11 +319,18 @@
             const tipoPeriodo = document.getElementById('tipo_periodo');
             const campoMes = document.getElementById('campo_mes');
             const campoTrimestre = document.getElementById('campo_trimestre');
+            const selectMes = document.getElementById('periodo_mes');
+            const selectTrimestre = document.getElementById('periodo_trimestre');
 
             function actualizarCamposPeriodo() {
-                const esMes = tipoPeriodo.value === 'mes';
+                const tipo = tipoPeriodo.value;
+                const esMes = tipo === 'mes';
+                const esTrimestre = tipo === 'trimestre';
                 campoMes.style.display = esMes ? 'inline-flex' : 'none';
-                campoTrimestre.style.display = esMes ? 'none' : 'inline-flex';
+                campoTrimestre.style.display = esTrimestre ? 'inline-flex' : 'none';
+                // Evitar que campos ocultos envíen mes/trimestre y contaminen el filtro
+                if (selectMes) selectMes.disabled = !esMes;
+                if (selectTrimestre) selectTrimestre.disabled = !esTrimestre;
             }
 
             tipoPeriodo.addEventListener('change', actualizarCamposPeriodo);
