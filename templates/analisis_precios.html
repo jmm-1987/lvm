@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Precio oficial del gasoil - Análisis</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 28px;
+            text-align: center;
+        }
+        .header h1 { margin: 0; font-weight: 300; }
+        .header p { margin: 8px 0 0 0; opacity: 0.9; }
+        .content { padding: 28px; }
+        .flash-message { padding: 12px 18px; border-radius: 8px; margin-bottom: 12px; }
+        .flash-success { background: #d4edda; color: #155724; }
+        .flash-error { background: #f8d7da; color: #721c24; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        .btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            color: white;
+            background: #667eea;
+            display: inline-block;
+        }
+        .btn-success { background: #43a047; }
+        .btn-secondary { background: #6c757d; }
+        .year-row { display: flex; gap: 10px; align-items: end; margin-bottom: 20px; }
+        label { display: block; margin-bottom: 6px; font-weight: 600; }
+        select, input[type="number"] {
+            padding: 10px 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+            font-size: 1em;
+        }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+        th, td { padding: 10px 8px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #f3f4f8; }
+        input.precio { width: 140px; }
+        .hint { color: #666; font-size: 0.9em; margin-bottom: 16px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Precio oficial del gasoil</h1>
+            <p>Referencia mensual para medir la desviación del precio al que se echa</p>
+        </div>
+        <div class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="actions">
+                <a href="{{ url_for('analisis') }}" class="btn btn-secondary">← Volver al análisis</a>
+            </div>
+
+            <form method="get" class="year-row">
+                <div>
+                    <label for="anio">Año</label>
+                    <select id="anio" name="anio" onchange="this.form.submit()">
+                        {% for a in años_disponibles %}
+                        <option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+
+            <p class="hint">Introduce el precio oficial en €/L de cada mes (normalmente el PVP con IVA). Déjalo vacío si todavía no hay dato. La desviación se compara con el €/L con IVA de cada camión.</p>
+
+            <form method="post">
+                <input type="hidden" name="anio" value="{{ anio }}">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mes</th>
+                            <th>Precio oficial €/L</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in meses_precios %}
+                        <tr>
+                            <td>{{ item.nombre }}</td>
+                            <td>
+                                <input class="precio" type="number" step="0.001" min="0" name="precio_{{ item.mes }}"
+                                       value="{{ '%.3f'|format(item.precio) if item.precio is not none else '' }}"
+                                       placeholder="Ej. 1.452">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <button type="submit" class="btn btn-success">Guardar precios {{ anio }}</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if registro and registro.id %}Editar gasoil{% else %}Nuevo gasoil{% endif %} - Análisis</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .container { max-width: 880px; margin: 0 auto; background: white; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 28px; text-align: center; }
+        .header h1 { margin: 0; font-weight: 300; }
+        .content { padding: 28px; }
+        .flash-message { padding: 12px 18px; border-radius: 8px; margin-bottom: 12px; }
+        .flash-success { background: #d4edda; color: #155724; }
+        .flash-error { background: #f8d7da; color: #721c24; }
+        fieldset { border: 1px solid #e1e5e9; border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+        legend { font-weight: 700; color: #333; padding: 0 8px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .form-row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 600; color: #333; font-size: 0.92em; }
+        .form-group input, .form-group select { width: 100%; padding: 10px 12px; border: 2px solid #e1e5e9; border-radius: 6px; font-size: 1em; }
+        .help { font-size: 0.8em; color: #666; margin-top: 4px; }
+        .calc-field { background: #f3f4f8; font-weight: 600; }
+        .iva-select { margin-top: 6px; }
+        .calc { background: #eef2ff; border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
+        .buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .btn { padding: 12px 22px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; text-decoration: none; color: white; background: #667eea; }
+        .btn-secondary { background: #6c757d; }
+        .btn-success { background: #43a047; }
+        @media (max-width: 768px) { .form-row, .form-row-4 { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{% if registro and registro.id %}Editar gasoil{% else %}Nuevo gasoil{% endif %}</h1>
+        </div>
+        <div class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}{% for category, message in messages %}<div class="flash-message flash-{{ category }}">{{ message }}</div>{% endfor %}{% endif %}
+            {% endwith %}
+            <p class="help" style="margin-bottom:16px;">Puedes guardar varios registros del mismo camión y mes si cambian la gasolinera o el tipo de gasoil.</p>
+            <form method="post" id="gasoilForm">
+                <fieldset>
+                    <legend>Camión, periodo y gasolinera</legend>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="camion_id">Camión</label>
+                            <select id="camion_id" name="camion_id" required>
+                                <option value="">Selecciona un camión</option>
+                                {% for camion in camiones %}
+                                <option value="{{ camion.id }}" {% if (registro and registro.camion_id == camion.id) or (not registro and camion_pref == camion.id) %}selected{% endif %}>{{ camion.etiqueta() }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="anio">Año</label>
+                            <input type="number" id="anio" name="anio" min="2020" max="{{ anio_actual + 1 }}" value="{{ registro.anio if registro else anio_pref }}" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="mes">Mes</label>
+                            <select id="mes" name="mes" required>
+                                {% for num, nombre in meses.items() %}
+                                <option value="{{ num }}" {% if (registro and registro.mes == num) or (not registro and num == mes_pref) %}selected{% endif %}>{{ nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="marca_gasolinera">Marca gasolinera</label>
+                            <input type="text" id="marca_gasolinera" name="marca_gasolinera" list="lista_marcas" required
+                                   value="{{ registro.marca_gasolinera if registro else '' }}" placeholder="SOLRED, VALCARCE, GUILLEN...">
+                            <datalist id="lista_marcas">
+                                {% for marca in marcas %}<option value="{{ marca }}"></option>{% endfor %}
+                            </datalist>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="tipo_gasoil">Tipo de gasoil</label>
+                        <select id="tipo_gasoil" name="tipo_gasoil" required>
+                            {% for tipo in tipos %}
+                            <option value="{{ tipo }}" {% if (registro and registro.tipo_gasoil == tipo) or (not registro and tipo == 'Gasóleo A') %}selected{% endif %}>{{ tipo }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </fieldset>
+                <fieldset>
+                    <legend>Importes</legend>
+                    <div class="form-row-4">
+                        <div class="form-group">
+                            <label for="gasto_con_iva">Gasoil con IVA €</label>
+                            <input type="text" inputmode="decimal" id="gasto_con_iva" name="gasto_con_iva"
+                                   value="{{ registro.gasto_con_iva if registro and registro.gasto_con_iva else '' }}" placeholder="0,00">
+                        </div>
+                        <div class="form-group">
+                            <label for="gasto_sin_iva">Gasoil sin IVA €</label>
+                            <input type="text" id="gasto_sin_iva" readonly class="calc-field"
+                                   value="{{ '%.2f'|format(registro.gasto_sin_iva) if registro and registro.gasto_sin_iva else '' }}">
+                            <select id="iva_porcentaje" name="iva_porcentaje" class="iva-select">
+                                {% set iva_sel = (registro.iva_porcentaje if registro and registro.iva_porcentaje is not none else 21)|round|int %}
+                                {% for iva in tipos_iva %}
+                                <option value="{{ iva }}" {% if iva_sel == iva %}selected{% endif %}>IVA {{ iva }} %</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="bonificacion">Bonificación €</label>
+                            <input type="text" inputmode="decimal" id="bonificacion" name="bonificacion"
+                                   value="{{ registro.bonificacion if registro and registro.bonificacion else '' }}" placeholder="0,00">
+                            <div class="help">Se resta del sin IVA</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="gasto_neto">Gasoil neto €</label>
+                            <input type="text" id="gasto_neto" readonly class="calc-field"
+                                   value="{{ '%.2f'|format(registro.gasto_neto) if registro and registro.gasto_neto else '' }}">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="litros">Litros</label>
+                            <input type="text" inputmode="decimal" id="litros" name="litros"
+                                   value="{{ registro.litros if registro else '' }}" placeholder="0,00">
+                            <div class="help">Acepta coma o punto (ej. 3827,02)</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="gasto_addblue">AdBlue €</label>
+                            <input type="text" inputmode="decimal" id="gasto_addblue" name="gasto_addblue"
+                                   value="{{ registro.gasto_addblue if registro else '' }}" placeholder="0,00">
+                        </div>
+                    </div>
+                </fieldset>
+                <div class="calc">
+                    Sin IVA: <strong id="cSinIva">—</strong> ·
+                    Neto: <strong id="cNeto">—</strong> ·
+                    €/L neto: <strong id="cPrecioL">—</strong> ·
+                    €/L con IVA: <strong id="cPrecioLIva">—</strong>
+                </div>
+                <div class="form-group">
+                    <label for="observaciones">Observaciones</label>
+                    <input type="text" id="observaciones" name="observaciones" maxlength="255" value="{{ registro.observaciones if registro and registro.observaciones else '' }}">
+                </div>
+                <div class="buttons">
+                    <button type="submit" class="btn">Guardar gasoil</button>
+                    <a href="{{ url_for('nuevo_gasoil_analisis', camion_id=camion_pref or (registro.camion_id if registro else 0), anio=anio_pref, mes=mes_pref) }}" class="btn btn-success">+ Otro gasoil</a>
+                    <a href="{{ url_for('analisis') }}" class="btn btn-secondary">Volver</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        const IVA = 1 + {{ iva_gasoil|default(0.21) }};
+        function n(id) {
+            const el = document.getElementById(id);
+            if (!el) return 0;
+            let t = String(el.value).replace(/\s/g, '');
+            if (t.indexOf(',') >= 0 && t.indexOf('.') >= 0) t = t.replace(/\./g, '').replace(',', '.');
+            else t = t.replace(',', '.');
+            const v = parseFloat(t);
+            return isNaN(v) ? 0 : v;
+        }
+        function ivaFactor() {
+            const pct = n('iva_porcentaje');
+            return 1 + (pct / 100);
+        }
+        function recalc() {
+            const conIva = n('gasto_con_iva');
+            const bonif = n('bonificacion');
+            const sinIva = conIva / ivaFactor();
+            const neto = sinIva - bonif;
+            const litros = n('litros');
+            document.getElementById('gasto_sin_iva').value = (conIva || bonif) ? sinIva.toFixed(2) : '';
+            document.getElementById('gasto_neto').value = (conIva || bonif) ? neto.toFixed(2) : '';
+            document.getElementById('cSinIva').textContent = sinIva.toFixed(2) + ' €';
+            document.getElementById('cNeto').textContent = neto.toFixed(2) + ' €';
+            document.getElementById('cPrecioL').textContent = litros > 0 ? (neto / litros).toFixed(3) + ' €/L' : '—';
+            document.getElementById('cPrecioLIva').textContent = litros > 0 && conIva ? (conIva / litros).toFixed(3) + ' €/L' : '—';
+        }
+        document.querySelectorAll('#gasoilForm input, #gasoilForm select').forEach(el => {
+            el.addEventListener('input', recalc);
+            el.addEventListener('change', recalc);
+        });
+        recalc();
+    </script>
+</body>
+</html>

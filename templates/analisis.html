@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análisis - LVM</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 28px 30px;
+            text-align: center;
+        }
+        .header h1 { margin: 0; font-size: 2.2em; font-weight: 300; }
+        .header p { margin: 8px 0 0 0; opacity: 0.9; }
+        .content { padding: 28px; }
+        .flash-message {
+            padding: 12px 18px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+        .flash-success { background: #d4edda; color: #155724; }
+        .flash-error { background: #f8d7da; color: #721c24; }
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 22px;
+        }
+        .btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            color: white;
+        }
+        .btn-primary { background: #667eea; }
+        .btn-success { background: #43a047; }
+        .btn-info { background: #1976d2; }
+        .btn-warning { background: #f9a825; color: #333; }
+        .btn-secondary { background: #6c757d; }
+        .btn-danger { background: #e53935; font-size: 0.8em; padding: 6px 10px; }
+        .btn-small { font-size: 0.8em; padding: 6px 10px; background: #1976d2; }
+        .filters {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .filter-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            align-items: end;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            color: #333;
+            font-size: 0.9em;
+        }
+        .form-group select, .form-group input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+            font-size: 0.95em;
+        }
+        .kpis {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .kpi {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 18px;
+            border: 1px solid #e9ecef;
+        }
+        .kpi .label { color: #666; font-size: 0.85em; margin-bottom: 6px; }
+        .kpi .value { font-size: 1.6em; font-weight: 700; color: #333; }
+        .kpi .hint { color: #888; font-size: 0.8em; margin-top: 4px; }
+        h3 { color: #333; margin: 0 0 14px 0; }
+        .table-wrap { overflow-x: auto; margin-bottom: 32px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+        th, td { padding: 10px 8px; border-bottom: 1px solid #eee; text-align: right; white-space: nowrap; }
+        th { background: #f3f4f8; color: #444; font-weight: 600; text-align: right; }
+        th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+        .totals-row { background: #eef2ff; font-weight: 700; }
+        .positive { color: #2e7d32; }
+        .negative { color: #c62828; }
+        .high { color: #c62828; font-weight: 700; }
+        .medium { color: #ef6c00; }
+        .low { color: #2e7d32; }
+        .empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+            background: #fafafa;
+            border-radius: 12px;
+        }
+        .muted { color: #888; font-size: 0.85em; }
+        @media (max-width: 768px) {
+            .content { padding: 16px; }
+            .header h1 { font-size: 1.6em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⛽ Análisis</h1>
+            <p>Incidencia del gasoil, precio medio de repostaje y cobro por kilómetro</p>
+        </div>
+        <div class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="actions">
+                <a href="{{ url_for('nuevo_ingreso_analisis', anio=anio, mes=mes, camion_id=camion_id) }}" class="btn btn-success">+ Ingresos</a>
+                <a href="{{ url_for('nuevo_gasoil_analisis', anio=anio, mes=mes, camion_id=camion_id) }}" class="btn btn-primary">+ Gasoil</a>
+                <a href="{{ url_for('grafica_analisis', anio=anio, mes=mes, camion_id=camion_id) }}" class="btn" style="background:#8e24aa;">Gráfica</a>
+                <a href="{{ url_for('repartos_analisis', anio=anio, mes=mes) }}" class="btn btn-success">Bonus / HVO</a>
+                <a href="{{ url_for('listar_rutas_analisis') }}" class="btn btn-info">Rutas</a>
+                <a href="{{ url_for('listar_camiones_analisis') }}" class="btn btn-info">Camiones</a>
+                <a href="{{ url_for('precios_oficiales_gasoil', anio=anio) }}" class="btn btn-warning">Precio oficial gasoil</a>
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">Inicio</a>
+            </div>
+
+            <div class="filters">
+                <form method="get">
+                    <div class="filter-row">
+                        <div class="form-group">
+                            <label for="anio">Año</label>
+                            <select id="anio" name="anio">
+                                {% for a in años_disponibles %}
+                                <option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="mes">Mes</label>
+                            <select id="mes" name="mes">
+                                <option value="0">Todos los meses</option>
+                                {% for num, nombre in meses.items() %}
+                                <option value="{{ num }}" {% if mes == num %}selected{% endif %}>{{ nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="camion_id">Camión</label>
+                            <select id="camion_id" name="camion_id">
+                                <option value="0">Todos los camiones</option>
+                                {% for camion in camiones %}
+                                <option value="{{ camion.id }}" {% if camion_id == camion.id %}selected{% endif %}>{{ camion.etiqueta() }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <button type="submit" class="btn btn-primary" style="width:100%;">Filtrar</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            {% if filas or filas_ingresos or filas_gasoil %}
+            <div class="kpis">
+                <div class="kpi">
+                    <div class="label">Incidencia del gasoil</div>
+                    <div class="value">{% if totales.incidencia is not none %}{{ "%.1f"|format(totales.incidencia) }}%{% else %}—{% endif %}</div>
+                    <div class="hint">Gasoil / ingresos totales</div>
+                </div>
+                <div class="kpi">
+                    <div class="label">Precio medio echa</div>
+                    <div class="value">{% if totales.precio_echado is not none %}{{ "%.3f"|format(totales.precio_echado) }} €/L{% else %}—{% endif %}</div>
+                    <div class="hint">Gasoil neto (sin IVA − bonif.) ÷ litros</div>
+                </div>
+                <div class="kpi">
+                    <div class="label">Cobrado por km</div>
+                    <div class="value">{% if totales.cobrado_km is not none %}{{ "%.3f"|format(totales.cobrado_km) }} €/km{% else %}—{% endif %}</div>
+                    <div class="hint">Ingresos + incremento ÷ km</div>
+                </div>
+                <div class="kpi">
+                    <div class="label">Desviación vs oficial</div>
+                    <div class="value {% if totales.desviacion is not none and totales.desviacion > 0 %}negative{% elif totales.desviacion is not none and totales.desviacion < 0 %}positive{% endif %}">
+                        {% if totales.desviacion is not none %}{{ "%+.3f"|format(totales.desviacion) }} €/L{% else %}—{% endif %}
+                    </div>
+                    <div class="hint">
+                        {% if totales.precio_oficial is not none %}Oficial {{ "%.3f"|format(totales.precio_oficial) }} €/L (vs €/L con IVA){% else %}Sin precio oficial{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <h3>Resumen por camión</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Camión</th>
+                            <th>Km</th>
+                            <th>Ingresos</th>
+                            <th>Incremento</th>
+                            <th>Bonus</th>
+                            <th>HVO</th>
+                            <th>Gasoil neto</th>
+                            <th>AdBlue</th>
+                            <th>Incidencia</th>
+                            <th>€/L echa</th>
+                            <th>€/km cobrado</th>
+                            <th>€/km gasoil</th>
+                            <th>Desviación</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for fila in resumen_camiones %}
+                        <tr>
+                            <td><strong>{{ fila.camion.etiqueta() }}</strong></td>
+                            <td>{{ "%.0f"|format(fila.km) }}</td>
+                            <td>{{ "%.2f"|format(fila.ingresos) }} €</td>
+                            <td class="{% if fila.incremento < 0 %}negative{% elif fila.incremento > 0 %}positive{% endif %}">{{ "%.2f"|format(fila.incremento) }} €</td>
+                            <td class="{% if (fila.bonus_calidad or 0) < 0 %}negative{% elif (fila.bonus_calidad or 0) > 0 %}positive{% endif %}">{{ "%.2f"|format(fila.bonus_calidad or 0) }} €</td>
+                            <td class="{% if (fila.suplemento_hvo or 0) < 0 %}negative{% elif (fila.suplemento_hvo or 0) > 0 %}positive{% endif %}">{{ "%.2f"|format(fila.suplemento_hvo or 0) }} €</td>
+                            <td>{{ "%.2f"|format(fila.gasto_gasoil) }} €</td>
+                            <td>{{ "%.2f"|format(fila.gastos - fila.gasto_gasoil) }} €</td>
+                            <td class="{% if fila.incidencia is not none and fila.incidencia > 40 %}high{% elif fila.incidencia is not none and fila.incidencia > 30 %}medium{% else %}low{% endif %}">
+                                {% if fila.incidencia is not none %}{{ "%.1f"|format(fila.incidencia) }}%{% else %}—{% endif %}
+                            </td>
+                            <td>{% if fila.precio_echado is not none %}{{ "%.3f"|format(fila.precio_echado) }}{% else %}—{% endif %}</td>
+                            <td>{% if fila.cobrado_km is not none %}{{ "%.3f"|format(fila.cobrado_km) }}{% else %}—{% endif %}</td>
+                            <td>{% if fila.gasoil_km is not none %}{{ "%.3f"|format(fila.gasoil_km) }}{% else %}—{% endif %}</td>
+                            <td class="{% if fila.desviacion is not none and fila.desviacion > 0 %}negative{% elif fila.desviacion is not none and fila.desviacion < 0 %}positive{% endif %}">
+                                {% if fila.desviacion is not none %}{{ "%+.3f"|format(fila.desviacion) }}{% else %}—{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <h3>Ingresos</h3>
+            <div class="table-wrap">
+                {% if filas_ingresos %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Camión</th>
+                            <th>Mes</th>
+                            <th>Km</th>
+                            <th>Ruta</th>
+                            <th>Chofer ad.</th>
+                            <th>Extra</th>
+                            <th>Autopista</th>
+                            <th>Incremento</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ing in filas_ingresos %}
+                        <tr>
+                            <td>{{ ing.camion.etiqueta() }}</td>
+                            <td>{{ meses[ing.mes] }}</td>
+                            <td>
+                                {{ "%.0f"|format(ing.km_realizados or 0) }}
+                                {% if ing.tramos %}
+                                <div class="muted">
+                                    {% for t in ing.tramos %}
+                                    {{ t.ruta.nombre if t.ruta else 'Ruta' }} × {{ "%.0f"|format(t.num_viajes or 0) }}{% if not loop.last %} · {% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </td>
+                            <td>{{ "%.2f"|format(ing.ingreso_ruta or 0) }}</td>
+                            <td>{{ "%.2f"|format(ing.ingreso_chofer_adicional or 0) }}</td>
+                            <td>{{ "%.2f"|format(ing.ingreso_extra or 0) }}</td>
+                            <td>{{ "%.2f"|format(ing.ingreso_autopista or 0) }}</td>
+                            <td class="{% if (ing.incremento_combustible or 0) < 0 %}negative{% elif (ing.incremento_combustible or 0) > 0 %}positive{% endif %}">{{ "%.2f"|format(ing.incremento_combustible or 0) }}</td>
+                            <td>
+                                <a href="{{ url_for('editar_ingreso_analisis', id=ing.id) }}" class="btn btn-small">Editar</a>
+                                <form action="{{ url_for('borrar_ingreso_analisis', id=ing.id) }}" method="post" style="display:inline;" onsubmit="return confirm('¿Borrar estos ingresos?');">
+                                    <button type="submit" class="btn btn-danger">Borrar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="muted">No hay ingresos en este filtro. <a href="{{ url_for('nuevo_ingreso_analisis', anio=anio, mes=mes, camion_id=camion_id) }}">Añadir ingresos</a></p>
+                {% endif %}
+            </div>
+
+            <h3>Bonus calidad y suplemento HVO</h3>
+            <div class="table-wrap">
+                {% if repartos %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mes</th>
+                            <th>Concepto</th>
+                            <th>Importe del mes</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in repartos %}
+                        <tr>
+                            <td>{{ meses[r.mes] }}</td>
+                            <td>{% if r.tipo == 'bonus_calidad' %}Bonus calidad{% else %}Suplemento HVO{% endif %}</td>
+                            <td class="{% if r.importe < 0 %}negative{% elif r.importe > 0 %}positive{% endif %}">{{ "%.2f"|format(r.importe) }} €</td>
+                            <td><a href="{{ url_for('repartos_analisis', anio=anio, mes=r.mes) }}" class="btn btn-small">Editar</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <p class="muted">El importe se reparte entre los camiones a razón de los km de cada uno. <a href="{{ url_for('repartos_analisis', anio=anio, mes=mes) }}">Añadir o cambiar</a></p>
+                {% else %}
+                <p class="muted">No hay bonus ni HVO en este filtro. <a href="{{ url_for('repartos_analisis', anio=anio, mes=mes) }}">Añadir</a></p>
+                {% endif %}
+            </div>
+
+            <h3>Gasoil (por gasolinera y tipo)</h3>
+            <div class="table-wrap">
+                {% if filas_gasoil %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Camión</th>
+                            <th>Mes</th>
+                            <th>Gasolinera</th>
+                            <th>Tipo</th>
+                            <th>Litros</th>
+                            <th>Con IVA</th>
+                            <th>Sin IVA</th>
+                            <th>Bonif.</th>
+                            <th>Neto</th>
+                            <th>AdBlue</th>
+                            <th>€/L neto</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for fila in filas_gasoil %}
+                        <tr>
+                            <td>{{ fila.registro.camion.etiqueta() }}</td>
+                            <td>{{ fila.mes_nombre }}</td>
+                            <td>{{ fila.registro.marca_gasolinera }}</td>
+                            <td>{{ fila.registro.tipo_gasoil }}</td>
+                            <td>{{ "%.2f"|format(fila.registro.litros or 0) }}</td>
+                            <td>{{ "%.2f"|format(fila.registro.gasto_con_iva or 0) }}</td>
+                            <td>
+                                {{ "%.2f"|format(fila.registro.gasto_sin_iva or 0) }}
+                                <div class="muted">IVA {{ "%.0f"|format(fila.registro.iva_porcentaje or 21) }} %</div>
+                            </td>
+                            <td>{{ "%.2f"|format(fila.registro.bonificacion or 0) }}</td>
+                            <td>{{ "%.2f"|format(fila.registro.gasto_neto or 0) }}</td>
+                            <td>{{ "%.2f"|format(fila.registro.gasto_addblue or 0) }}</td>
+                            <td>{% if fila.precio_neto is not none %}{{ "%.3f"|format(fila.precio_neto) }}{% else %}—{% endif %}</td>
+                            <td>
+                                <a href="{{ url_for('editar_gasoil_analisis', id=fila.registro.id) }}" class="btn btn-small">Editar</a>
+                                <form action="{{ url_for('borrar_gasoil_analisis', id=fila.registro.id) }}" method="post" style="display:inline;" onsubmit="return confirm('¿Borrar este gasoil?');">
+                                    <button type="submit" class="btn btn-danger">Borrar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="muted">No hay gasoil en este filtro. <a href="{{ url_for('nuevo_gasoil_analisis', anio=anio, mes=mes, camion_id=camion_id) }}">Añadir gasoil</a></p>
+                {% endif %}
+            </div>
+
+            {% if filas %}
+            <h3>Cruce mensual (ingresos + gasoil)</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Camión</th>
+                            <th>Mes</th>
+                            <th>Km</th>
+                            <th>Ruta</th>
+                            <th>Chofer ad.</th>
+                            <th>Extra</th>
+                            <th>Autopista</th>
+                            <th>Incremento</th>
+                            <th>Bonus</th>
+                            <th>HVO</th>
+                            <th>Gasoil IVA</th>
+                            <th>Sin IVA</th>
+                            <th>Bonif.</th>
+                            <th>Gasoil neto</th>
+                            <th>Litros</th>
+                            <th>AdBlue</th>
+                            <th>Incidencia</th>
+                            <th>€/L echa</th>
+                            <th>€/L oficial</th>
+                            <th>€/km</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for fila in filas %}
+                        <tr>
+                            <td>{% if fila.camion %}{{ fila.camion.etiqueta() }}{% else %}—{% endif %}</td>
+                            <td>{{ fila.mes_nombre }}</td>
+                            <td>{{ "%.0f"|format(fila.km) }}</td>
+                            <td>{{ "%.2f"|format(fila.ingreso.ingreso_ruta if fila.ingreso else 0) }}</td>
+                            <td>{{ "%.2f"|format(fila.ingreso.ingreso_chofer_adicional if fila.ingreso else 0) }}</td>
+                            <td>{{ "%.2f"|format(fila.ingreso.ingreso_extra if fila.ingreso else 0) }}</td>
+                            <td>{{ "%.2f"|format(fila.ingreso.ingreso_autopista if fila.ingreso else 0) }}</td>
+                            <td class="{% if fila.incremento < 0 %}negative{% elif fila.incremento > 0 %}positive{% endif %}">{{ "%.2f"|format(fila.incremento) }}</td>
+                            <td class="{% if (fila.bonus_calidad or 0) < 0 %}negative{% elif (fila.bonus_calidad or 0) > 0 %}positive{% endif %}">{{ "%.2f"|format(fila.bonus_calidad or 0) }}</td>
+                            <td class="{% if (fila.suplemento_hvo or 0) < 0 %}negative{% elif (fila.suplemento_hvo or 0) > 0 %}positive{% endif %}">{{ "%.2f"|format(fila.suplemento_hvo or 0) }}</td>
+                            <td>{{ "%.2f"|format(fila.gasto_gasoil_con_iva or 0) }}</td>
+                            <td>{{ "%.2f"|format(fila.gasto_gasoil_sin_iva or 0) }}</td>
+                            <td>{{ "%.2f"|format(fila.bonificacion_gasoil or 0) }}</td>
+                            <td>{{ "%.2f"|format(fila.gasto_gasoil) }}</td>
+                            <td>{{ "%.2f"|format(fila.litros) }}</td>
+                            <td>{{ "%.2f"|format(fila.gastos - fila.gasto_gasoil) }}</td>
+                            <td class="{% if fila.incidencia is not none and fila.incidencia > 40 %}high{% elif fila.incidencia is not none and fila.incidencia > 30 %}medium{% else %}low{% endif %}">
+                                {% if fila.incidencia is not none %}{{ "%.1f"|format(fila.incidencia) }}%{% else %}—{% endif %}
+                            </td>
+                            <td>{% if fila.precio_echado is not none %}{{ "%.3f"|format(fila.precio_echado) }}{% else %}—{% endif %}</td>
+                            <td>{% if fila.precio_oficial is not none %}{{ "%.3f"|format(fila.precio_oficial) }}{% else %}—{% endif %}</td>
+                            <td>{% if fila.cobrado_km is not none %}{{ "%.3f"|format(fila.cobrado_km) }}{% else %}—{% endif %}</td>
+                            <td></td>
+                        </tr>
+                        {% endfor %}
+                        <tr class="totals-row">
+                            <td colspan="2">TOTALES</td>
+                            <td>{{ "%.0f"|format(totales.km) }}</td>
+                            <td colspan="4">{{ "%.2f"|format(totales.ingresos) }} €</td>
+                            <td>{{ "%.2f"|format(totales.incremento) }}</td>
+                            <td>{{ "%.2f"|format(totales.bonus_calidad or 0) }}</td>
+                            <td>{{ "%.2f"|format(totales.suplemento_hvo or 0) }}</td>
+                            <td>{{ "%.2f"|format(totales.gasto_gasoil_con_iva or 0) }}</td>
+                            <td>{{ "%.2f"|format(totales.gasto_gasoil_sin_iva or 0) }}</td>
+                            <td>{{ "%.2f"|format(totales.bonificacion_gasoil or 0) }}</td>
+                            <td>{{ "%.2f"|format(totales.gasto_gasoil) }}</td>
+                            <td>{{ "%.2f"|format(totales.litros) }}</td>
+                            <td>{{ "%.2f"|format(totales.gastos - totales.gasto_gasoil) }}</td>
+                            <td>{% if totales.incidencia is not none %}{{ "%.1f"|format(totales.incidencia) }}%{% else %}—{% endif %}</td>
+                            <td>{% if totales.precio_echado is not none %}{{ "%.3f"|format(totales.precio_echado) }}{% else %}—{% endif %}</td>
+                            <td>{% if totales.precio_oficial is not none %}{{ "%.3f"|format(totales.precio_oficial) }}{% else %}—{% endif %}</td>
+                            <td>{% if totales.cobrado_km is not none %}{{ "%.3f"|format(totales.cobrado_km) }}{% else %}—{% endif %}</td>
+                            <td></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+            {% else %}
+            <div class="empty">
+                <h3>No hay registros para este filtro</h3>
+                <p class="muted">Añade ingresos y tantos gasoil como gasolineras o tipos uses.</p>
+                <p>
+                    <a href="{{ url_for('nuevo_ingreso_analisis') }}" class="btn btn-success">+ Ingresos</a>
+                    <a href="{{ url_for('nuevo_gasoil_analisis') }}" class="btn btn-primary">+ Gasoil</a>
+                    <a href="{{ url_for('listar_camiones_analisis') }}" class="btn btn-info">Gestionar camiones</a>
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

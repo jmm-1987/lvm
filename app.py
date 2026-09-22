@@ -8,6 +8,8 @@ from pathlib import Path
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, Response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import inspect, text
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import csv
@@ -101,6 +103,130 @@ class ViajeXPO(db.Model):
     fecha_creacion = db.Column(db.String(20), nullable=False, default=lambda: datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     origen_telegram = db.Column(db.Boolean, nullable=False, default=False)  # Indica si viene del bot de Telegram
 
+# Modelo de Camión (análisis de explotación)
+class Camion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    matricula = db.Column(db.String(20), nullable=False, unique=True)
+    alias = db.Column(db.String(100), nullable=True)
+    activo = db.Column(db.Boolean, nullable=False, default=True)
+
+    def etiqueta(self):
+        if self.alias:
+            return f"{self.matricula} ({self.alias})"
+        return self.matricula
+
+# Precio oficial del gasoil por mes (referencia para desviación)
+class PrecioGasoilOficial(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    precio = db.Column(db.Float, nullable=False)
+    __table_args__ = (db.UniqueConstraint('anio', 'mes', name='uq_precio_gasoil_oficial_mes'),)
+
+# Registro mensual de ingresos por camión (km, facturación e incremento)
+class RegistroIngreso(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    camion_id = db.Column(db.Integer, db.ForeignKey('camion.id'), nullable=False)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    km_realizados = db.Column(db.Float, nullable=False, default=0)
+    ingreso_ruta = db.Column(db.Float, nullable=False, default=0)
+    ingreso_chofer_adicional = db.Column(db.Float, nullable=False, default=0)
+    ingreso_extra = db.Column(db.Float, nullable=False, default=0)
+    ingreso_autopista = db.Column(db.Float, nullable=False, default=0)
+    incremento_combustible = db.Column(db.Float, nullable=False, default=0)
+    observaciones = db.Column(db.String(255), nullable=True)
+    __table_args__ = (db.UniqueConstraint('camion_id', 'anio', 'mes', name='uq_registro_ingreso_camion_mes'),)
+
+# Catálogo de rutas con km por viaje
+class Ruta(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(120), nullable=False, unique=True)
+    km = db.Column(db.Float, nullable=False, default=0)
+    observaciones = db.Column(db.String(255), nullable=True)
+    activa = db.Column(db.Boolean, nullable=False, default=True)
+
+    def etiqueta(self):
+        return f"{self.nombre} ({self.km:g} km)"
+
+# Tramos de un ingreso: ruta × número de viajes
+class RegistroIngresoTramo(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    ingreso_id = db.Column(db.Integer, db.ForeignKey('registro_ingreso.id'), nullable=False)
+    ruta_id = db.Column(db.Integer, db.ForeignKey('ruta.id'), nullable=False)
+    num_viajes = db.Column(db.Float, nullable=False, default=0)
+
+    def km_tramo(self):
+        km_ruta = self.ruta.km if self.ruta else 0
+        return (km_ruta or 0) * (self.num_viajes or 0)
+
+# Varios registros de gasoil por camión, gasolinera y tipo
+class RegistroGasoil(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    camion_id = db.Column(db.Integer, db.ForeignKey('camion.id'), nullable=False)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    marca_gasolinera = db.Column(db.String(80), nullable=False, default='')
+    tipo_gasoil = db.Column(db.String(80), nullable=False, default='')
+    litros = db.Column(db.Float, nullable=False, default=0)
+    gasto_con_iva = db.Column(db.Float, nullable=False, default=0)
+    gasto_sin_iva = db.Column(db.Float, nullable=False, default=0)
+    bonificacion = db.Column(db.Float, nullable=False, default=0)
+    gasto_neto = db.Column(db.Float, nullable=False, default=0)
+    gasto_addblue = db.Column(db.Float, nullable=False, default=0)
+    iva_porcentaje = db.Column(db.Float, nullable=False, default=21)
+    observaciones = db.Column(db.String(255), nullable=True)
+
+# Tabla antigua (un registro mixto); se mantiene solo para migrar datos ya guardados
+class RegistroAnalisis(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    camion_id = db.Column(db.Integer, db.ForeignKey('camion.id'), nullable=False)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    km_realizados = db.Column(db.Float, nullable=False, default=0)
+    ingreso_ruta = db.Column(db.Float, nullable=False, default=0)
+    ingreso_chofer_adicional = db.Column(db.Float, nullable=False, default=0)
+    ingreso_extra = db.Column(db.Float, nullable=False, default=0)
+    ingreso_autopista = db.Column(db.Float, nullable=False, default=0)
+    gasto_gasoil_con_iva = db.Column(db.Float, nullable=False, default=0)
+    gasto_gasoil_sin_iva = db.Column(db.Float, nullable=False, default=0)
+    bonificacion_gasoil = db.Column(db.Float, nullable=False, default=0)
+    gasto_gasoil = db.Column(db.Float, nullable=False, default=0)
+    litros_gasoil = db.Column(db.Float, nullable=False, default=0)
+    gasto_addblue = db.Column(db.Float, nullable=False, default=0)
+    incremento_combustible = db.Column(db.Float, nullable=False, default=0)
+    observaciones = db.Column(db.String(255), nullable=True)
+
+Camion.ingresos = db.relationship('RegistroIngreso', backref='camion', cascade='all, delete-orphan')
+Camion.repostajes = db.relationship('RegistroGasoil', backref='camion', cascade='all, delete-orphan')
+RegistroIngreso.tramos = db.relationship('RegistroIngresoTramo', backref='ingreso', cascade='all, delete-orphan')
+Ruta.tramos = db.relationship('RegistroIngresoTramo', backref='ruta')
+
+# Bonus calidad y suplemento HVO: un importe al mes, se reparte por km
+class RegistroReparto(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    tipo = db.Column(db.String(40), nullable=False)
+    importe = db.Column(db.Float, nullable=False, default=0)
+    observaciones = db.Column(db.String(255), nullable=True)
+    __table_args__ = (db.UniqueConstraint('anio', 'mes', 'tipo', name='uq_reparto_anio_mes_tipo'),)
+
+MESES_NOMBRE = {
+    1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
+    7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+}
+
+IVA_GASOIL = 0.21
+TIPOS_IVA = [21, 10, 4, 0]
+MARCAS_GASOLINERA = ['SOLRED', 'VALCARCE', 'GUILLEN', 'DST', 'NIVES', 'VYS', 'Cepsa', 'BP', 'Galp', 'Shell', 'Petronor', 'Ballenoil', 'Plenoil', 'Disa', 'Meroil', 'Otras']
+TIPOS_GASOIL = ['Gasóleo A', 'HVO', 'Gasóleo A Premium', 'Gasóleo B', 'Gasóleo C']
+TIPOS_REPARTO = [
+    ('bonus_calidad', 'Bonus calidad'),
+    ('suplemento_hvo', 'Suplemento HVO'),
+]
+_esquema_analisis_ok = False
+
 # Eliminar el modelo Usuario y la tabla de usuarios
 # Definir un usuario en memoria para Flask-Login
 class UsuarioFalso(UserMixin):
@@ -149,6 +275,8 @@ def require_login():
     excluded_endpoints = ('login', 'static', 'telegram_webhook')
     if request.endpoint not in excluded_endpoints and not current_user.is_authenticated:
         return redirect(url_for('login'))
+    if request.endpoint and 'analisis' in request.endpoint:
+        asegurar_esquema_analisis()
 
 @app.route('/')
 def index():
@@ -2240,6 +2368,234 @@ def commit_seguro(operacion_descripcion="operación"):
         app.logger.error(f'Error en commit de {operacion_descripcion}: {str(e)}')
         raise e
 
+def parsear_float_form(valor, por_defecto=0.0):
+    """Convierte un valor de formulario a float, aceptando coma o punto decimal."""
+    if valor is None:
+        return por_defecto
+    texto = str(valor).strip().replace(' ', '').replace('\xa0', '')
+    if texto == '':
+        return por_defecto
+    if ',' in texto and '.' in texto:
+        texto = texto.replace('.', '').replace(',', '.')
+    elif ',' in texto:
+        texto = texto.replace(',', '.')
+    try:
+        return float(texto)
+    except (TypeError, ValueError):
+        return por_defecto
+
+def calcular_gasoil_desglose(con_iva, bonificacion=0.0, iva_porcentaje=None):
+    """A partir del gasoil con IVA, obtiene sin IVA y el neto tras bonificación."""
+    con_iva = con_iva or 0.0
+    bonificacion = bonificacion or 0.0
+    if iva_porcentaje is None:
+        iva = IVA_GASOIL
+    else:
+        iva = (iva_porcentaje or 0) / 100.0
+        if iva < 0:
+            iva = IVA_GASOIL
+    sin_iva = round(con_iva / (1 + iva), 2) if (1 + iva) else con_iva
+    neto = round(sin_iva - bonificacion, 2)
+    return sin_iva, neto
+
+def asegurar_esquema_analisis():
+    """Crea tablas nuevas y migra registros mixtos antiguos si los hay."""
+    global _esquema_analisis_ok
+    if _esquema_analisis_ok:
+        return
+    db.create_all()
+    try:
+        _asegurar_columnas_analisis()
+        _migrar_registros_mixtos_analisis()
+        _esquema_analisis_ok = True
+    except Exception as e:
+        app.logger.error(f'Error al actualizar esquema de análisis: {e}')
+
+def _asegurar_columnas_analisis():
+    inspector = inspect(db.engine)
+    if 'registro_gasoil' not in inspector.get_table_names():
+        return
+    columnas = {c['name'] for c in inspector.get_columns('registro_gasoil')}
+    if 'iva_porcentaje' not in columnas:
+        db.session.execute(text('ALTER TABLE registro_gasoil ADD COLUMN iva_porcentaje FLOAT DEFAULT 21'))
+        db.session.commit()
+
+def _migrar_registros_mixtos_analisis():
+    inspector = inspect(db.engine)
+    if 'registro_analisis' not in inspector.get_table_names():
+        return
+    if RegistroIngreso.query.count() or RegistroGasoil.query.count():
+        return
+    antiguos = RegistroAnalisis.query.all()
+    for old in antiguos:
+        tiene_ingreso = any([
+            old.km_realizados, old.ingreso_ruta, old.ingreso_chofer_adicional,
+            old.ingreso_extra, old.ingreso_autopista, old.incremento_combustible,
+        ])
+        if tiene_ingreso:
+            db.session.add(RegistroIngreso(
+                camion_id=old.camion_id,
+                anio=old.anio,
+                mes=old.mes,
+                km_realizados=old.km_realizados or 0,
+                ingreso_ruta=old.ingreso_ruta or 0,
+                ingreso_chofer_adicional=old.ingreso_chofer_adicional or 0,
+                ingreso_extra=old.ingreso_extra or 0,
+                ingreso_autopista=old.ingreso_autopista or 0,
+                incremento_combustible=old.incremento_combustible or 0,
+                observaciones=old.observaciones,
+            ))
+        tiene_gasoil = any([
+            old.litros_gasoil, old.gasto_gasoil, old.gasto_gasoil_con_iva,
+            old.gasto_addblue, old.bonificacion_gasoil,
+        ])
+        if tiene_gasoil:
+            db.session.add(RegistroGasoil(
+                camion_id=old.camion_id,
+                anio=old.anio,
+                mes=old.mes,
+                marca_gasolinera='Sin especificar',
+                tipo_gasoil='Gasóleo A',
+                litros=old.litros_gasoil or 0,
+                gasto_con_iva=old.gasto_gasoil_con_iva or 0,
+                gasto_sin_iva=old.gasto_gasoil_sin_iva or 0,
+                bonificacion=old.bonificacion_gasoil or 0,
+                gasto_neto=old.gasto_gasoil or 0,
+                gasto_addblue=old.gasto_addblue or 0,
+                observaciones=old.observaciones,
+            ))
+    if antiguos:
+        db.session.commit()
+
+def valores_distintos(modelo, campo, base):
+    extra = [row[0] for row in db.session.query(campo).distinct().all() if row[0]]
+    return sorted(set(base) | set(extra), key=lambda x: x.lower())
+
+def _camiones_para_formulario(registro=None):
+    camiones = Camion.query.filter_by(activo=True).order_by(Camion.matricula).all()
+    if registro and registro.camion and registro.camion not in camiones:
+        camiones = [registro.camion] + camiones
+    return camiones
+
+def _rutas_para_formulario(registro=None):
+    rutas = Ruta.query.filter_by(activa=True).order_by(Ruta.nombre).all()
+    if registro:
+        usadas = [t.ruta for t in registro.tramos if t.ruta]
+        for ruta in usadas:
+            if ruta not in rutas:
+                rutas.append(ruta)
+        rutas.sort(key=lambda r: (r.nombre or '').lower())
+    return rutas
+
+def parsear_entero_form(valor, por_defecto=0):
+    """Convierte un valor de formulario a entero."""
+    try:
+        return int(valor)
+    except (TypeError, ValueError):
+        return por_defecto
+
+def metricas_registro_analisis(registro, precio_oficial=None):
+    """Calcula incidencia de gasoil, precio medio echa y €/km de un registro mensual."""
+    ingresos = (
+        (registro.ingreso_ruta or 0)
+        + (registro.ingreso_chofer_adicional or 0)
+        + (registro.ingreso_extra or 0)
+        + (registro.ingreso_autopista or 0)
+    )
+    incremento = registro.incremento_combustible or 0
+    bonus_calidad = getattr(registro, 'bonus_calidad', 0) or 0
+    suplemento_hvo = getattr(registro, 'suplemento_hvo', 0) or 0
+    ingresos_totales = ingresos + incremento + bonus_calidad + suplemento_hvo
+    gastos = (registro.gasto_gasoil or 0) + (registro.gasto_addblue or 0)
+    km = registro.km_realizados or 0
+    litros = registro.litros_gasoil or 0
+    gasto_gasoil = registro.gasto_gasoil or 0
+    con_iva = getattr(registro, 'gasto_gasoil_con_iva', 0) or 0
+    sin_iva = getattr(registro, 'gasto_gasoil_sin_iva', 0) or 0
+    bonificacion = getattr(registro, 'bonificacion_gasoil', 0) or 0
+
+    precio_echado = (gasto_gasoil / litros) if litros > 0 else None
+    precio_echado_con_iva = (con_iva / litros) if litros > 0 and con_iva else None
+    incidencia = (gasto_gasoil / ingresos_totales * 100) if ingresos_totales > 0 else None
+    cobrado_km = (ingresos_totales / km) if km > 0 else None
+    gasoil_km = (gasto_gasoil / km) if km > 0 else None
+    base_desviacion = precio_echado_con_iva if precio_echado_con_iva is not None else precio_echado
+    desviacion = None
+    desviacion_pct = None
+    if base_desviacion is not None and precio_oficial:
+        desviacion = base_desviacion - precio_oficial
+        desviacion_pct = (desviacion / precio_oficial * 100) if precio_oficial else None
+
+    return {
+        'ingresos': ingresos,
+        'incremento': incremento,
+        'bonus_calidad': bonus_calidad,
+        'suplemento_hvo': suplemento_hvo,
+        'ingresos_totales': ingresos_totales,
+        'gastos': gastos,
+        'km': km,
+        'litros': litros,
+        'gasto_gasoil': gasto_gasoil,
+        'gasto_gasoil_con_iva': con_iva,
+        'gasto_gasoil_sin_iva': sin_iva,
+        'bonificacion_gasoil': bonificacion,
+        'precio_echado': precio_echado,
+        'precio_echado_con_iva': precio_echado_con_iva,
+        'precio_oficial': precio_oficial,
+        'incidencia': incidencia,
+        'cobrado_km': cobrado_km,
+        'gasoil_km': gasoil_km,
+        'desviacion': desviacion,
+        'desviacion_pct': desviacion_pct,
+        'margen': ingresos_totales - gastos,
+    }
+
+def agregar_totales_metricas(totales, metricas):
+    totales['km'] += metricas['km']
+    totales['litros'] += metricas['litros']
+    totales['gasto_gasoil'] += metricas['gasto_gasoil']
+    totales['gasto_gasoil_con_iva'] += metricas.get('gasto_gasoil_con_iva') or 0
+    totales['gasto_gasoil_sin_iva'] += metricas.get('gasto_gasoil_sin_iva') or 0
+    totales['bonificacion_gasoil'] += metricas.get('bonificacion_gasoil') or 0
+    totales['ingresos'] += metricas['ingresos']
+    totales['incremento'] += metricas['incremento']
+    totales['bonus_calidad'] = (totales.get('bonus_calidad') or 0) + (metricas.get('bonus_calidad') or 0)
+    totales['suplemento_hvo'] = (totales.get('suplemento_hvo') or 0) + (metricas.get('suplemento_hvo') or 0)
+    totales['ingresos_totales'] += metricas['ingresos_totales']
+    totales['gastos'] += metricas['gastos']
+    if metricas.get('precio_oficial') and metricas['litros'] > 0:
+        totales['litros_con_oficial'] += metricas['litros']
+        totales['coste_oficial'] += metricas['litros'] * metricas['precio_oficial']
+
+def metricas_desde_totales(totales, precio_oficial=None):
+    if precio_oficial is None and totales.get('litros_con_oficial'):
+        precio_oficial = totales['coste_oficial'] / totales['litros_con_oficial']
+    fake = type('T', (), {
+        'ingreso_ruta': totales['ingresos'],
+        'ingreso_chofer_adicional': 0,
+        'ingreso_extra': 0,
+        'ingreso_autopista': 0,
+        'incremento_combustible': totales['incremento'],
+        'bonus_calidad': totales.get('bonus_calidad') or 0,
+        'suplemento_hvo': totales.get('suplemento_hvo') or 0,
+        'gasto_gasoil': totales['gasto_gasoil'],
+        'gasto_gasoil_con_iva': totales.get('gasto_gasoil_con_iva') or 0,
+        'gasto_gasoil_sin_iva': totales.get('gasto_gasoil_sin_iva') or 0,
+        'bonificacion_gasoil': totales.get('bonificacion_gasoil') or 0,
+        'gasto_addblue': totales['gastos'] - totales['gasto_gasoil'],
+        'km_realizados': totales['km'],
+        'litros_gasoil': totales['litros'],
+    })()
+    return metricas_registro_analisis(fake, precio_oficial)
+
+TOTALES_VACIOS = {
+    'km': 0.0, 'litros': 0.0, 'gasto_gasoil': 0.0, 'ingresos': 0.0,
+    'incremento': 0.0, 'ingresos_totales': 0.0, 'gastos': 0.0,
+    'bonus_calidad': 0.0, 'suplemento_hvo': 0.0,
+    'litros_con_oficial': 0.0, 'coste_oficial': 0.0,
+    'gasto_gasoil_con_iva': 0.0, 'gasto_gasoil_sin_iva': 0.0, 'bonificacion_gasoil': 0.0,
+}
+
 def limpiar_nombre_empleado(nombre):
     """Limpia el nombre del empleado quitando prefijos y DNI"""
     if not nombre:
@@ -3020,6 +3376,764 @@ def pagos_cuenta_473():
     
     return render_template('473_pagos_cuenta.html', resultado=resultado, detalle=detalle, total_importe=total_importe, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
 
+def _acumular_gasoil_en(totales, g):
+    totales['litros'] += g.litros or 0
+    totales['gasto_gasoil'] += g.gasto_neto or 0
+    totales['gasto_gasoil_con_iva'] += g.gasto_con_iva or 0
+    totales['gasto_gasoil_sin_iva'] += g.gasto_sin_iva or 0
+    totales['bonificacion_gasoil'] += g.bonificacion or 0
+    totales['gastos'] += (g.gasto_neto or 0) + (g.gasto_addblue or 0)
+
+def _acumular_ingreso_en(totales, ing):
+    ingresos = (
+        (ing.ingreso_ruta or 0)
+        + (ing.ingreso_chofer_adicional or 0)
+        + (ing.ingreso_extra or 0)
+        + (ing.ingreso_autopista or 0)
+    )
+    totales['km'] += ing.km_realizados or 0
+    totales['ingresos'] += ingresos
+    totales['incremento'] += ing.incremento_combustible or 0
+    totales['ingresos_totales'] += ingresos + (ing.incremento_combustible or 0)
+
+def _km_flota_por_mes(anio):
+    """Km de cada camión y total de flota por mes, para repartir bonus/HVO."""
+    por_mes = {}
+    for ing in RegistroIngreso.query.filter_by(anio=anio).all():
+        datos = por_mes.setdefault(ing.mes, {'total': 0.0, 'por_camion': {}})
+        km = ing.km_realizados or 0
+        datos['por_camion'][ing.camion_id] = datos['por_camion'].get(ing.camion_id, 0) + km
+        datos['total'] += km
+    return por_mes
+
+def _aplicar_repartos(por_clave, anio, camion_id=0, camiones_por_id=None):
+    """Reparte bonus calidad y suplemento HVO del mes a razón de los km de cada camión."""
+    repartos = RegistroReparto.query.filter_by(anio=anio).all()
+    if not repartos:
+        return
+    km_flota = _km_flota_por_mes(anio)
+    camiones_por_id = camiones_por_id or {}
+    for reparto in repartos:
+        datos_mes = km_flota.get(reparto.mes) or {'total': 0, 'por_camion': {}}
+        total_km = datos_mes['total'] or 0
+        if total_km <= 0 or not (reparto.importe or 0):
+            continue
+        campo = 'bonus_calidad' if reparto.tipo == 'bonus_calidad' else 'suplemento_hvo'
+        items = sorted(
+            ((cid, km) for cid, km in datos_mes['por_camion'].items() if (km or 0) > 0),
+            key=lambda x: x[0],
+        )
+        asignado = 0.0
+        for i, (cid, km) in enumerate(items):
+            if km <= 0:
+                continue
+            if i == len(items) - 1:
+                share = round((reparto.importe or 0) - asignado, 2)
+            else:
+                share = round((reparto.importe or 0) * km / total_km, 2)
+                asignado += share
+            if camion_id and cid != camion_id:
+                continue
+            key = (cid, reparto.mes)
+            if key not in por_clave:
+                por_clave[key] = {
+                    'camion': camiones_por_id.get(cid),
+                    'mes': reparto.mes,
+                    'totales': dict(TOTALES_VACIOS),
+                    'ingreso': None,
+                }
+            por_clave[key]['totales'][campo] = (por_clave[key]['totales'].get(campo) or 0) + share
+
+# ==================== ANÁLISIS DE CAMIONES / GASOIL ====================
+
+def _filtros_analisis():
+    hoy = datetime.today()
+    anio = parsear_entero_form(request.args.get('anio', hoy.year), hoy.year)
+    mes = parsear_entero_form(request.args.get('mes', 0), 0)
+    camion_id = parsear_entero_form(request.args.get('camion_id', 0), 0)
+    return anio, mes, camion_id
+
+def _resumen_analisis(anio, mes=0, camion_id=0):
+    """Cruza ingresos y gasoil por camión y mes."""
+    camiones = Camion.query.order_by(Camion.matricula).all()
+    camiones_por_id = {c.id: c for c in camiones}
+
+    q_ing = RegistroIngreso.query.filter_by(anio=anio)
+    q_gas = RegistroGasoil.query.filter_by(anio=anio)
+    if mes:
+        q_ing = q_ing.filter_by(mes=mes)
+        q_gas = q_gas.filter_by(mes=mes)
+    if camion_id:
+        q_ing = q_ing.filter_by(camion_id=camion_id)
+        q_gas = q_gas.filter_by(camion_id=camion_id)
+    ingresos = q_ing.order_by(RegistroIngreso.mes, RegistroIngreso.camion_id).all()
+    repostajes = q_gas.order_by(RegistroGasoil.mes, RegistroGasoil.camion_id, RegistroGasoil.marca_gasolinera).all()
+
+    precios_oficiales = {
+        p.mes: p.precio
+        for p in PrecioGasoilOficial.query.filter_by(anio=anio).all()
+    }
+
+    por_clave = {}
+    def clave_bucket(camion_id_val, mes_val):
+        key = (camion_id_val, mes_val)
+        if key not in por_clave:
+            por_clave[key] = {
+                'camion': camiones_por_id.get(camion_id_val),
+                'mes': mes_val,
+                'totales': dict(TOTALES_VACIOS),
+                'ingreso': None,
+            }
+        return por_clave[key]
+
+    for ing in ingresos:
+        bucket = clave_bucket(ing.camion_id, ing.mes)
+        bucket['camion'] = ing.camion
+        bucket['ingreso'] = ing
+        _acumular_ingreso_en(bucket['totales'], ing)
+
+    for g in repostajes:
+        bucket = clave_bucket(g.camion_id, g.mes)
+        bucket['camion'] = bucket['camion'] or g.camion
+        _acumular_gasoil_en(bucket['totales'], g)
+        if precios_oficiales.get(g.mes) and (g.litros or 0) > 0:
+            bucket['totales']['litros_con_oficial'] += g.litros or 0
+            bucket['totales']['coste_oficial'] += (g.litros or 0) * precios_oficiales[g.mes]
+
+    _aplicar_repartos(por_clave, anio, camion_id, camiones_por_id)
+
+    filas = []
+    totales = dict(TOTALES_VACIOS)
+    por_camion = {}
+    por_mes_raw = {m: dict(TOTALES_VACIOS) for m in range(1, 13)}
+    for (cid, mes_val), bucket in sorted(por_clave.items(), key=lambda x: (x[0][1], x[1]['camion'].matricula if x[1]['camion'] else '')):
+        precio_oficial = precios_oficiales.get(mes_val)
+        metricas = metricas_desde_totales(bucket['totales'], precio_oficial)
+        filas.append({
+            'camion': bucket['camion'],
+            'ingreso': bucket['ingreso'],
+            'mes': mes_val,
+            'mes_nombre': MESES_NOMBRE.get(mes_val, mes_val),
+            **metricas,
+        })
+        agregar_totales_metricas(totales, metricas)
+        for k, v in bucket['totales'].items():
+            por_mes_raw[mes_val][k] += v or 0
+        if bucket['camion']:
+            resumen = por_camion.setdefault(cid, {
+                'camion': bucket['camion'],
+                'totales': dict(TOTALES_VACIOS),
+            })
+            agregar_totales_metricas(resumen['totales'], metricas)
+
+    precio_oficial_filtro = precios_oficiales.get(mes) if mes else None
+    totales_metricas = metricas_desde_totales(totales, precio_oficial_filtro)
+    resumen_camiones = []
+    for datos in por_camion.values():
+        resumen_camiones.append({
+            'camion': datos['camion'],
+            **metricas_desde_totales(datos['totales'], precio_oficial_filtro),
+        })
+    resumen_camiones.sort(key=lambda x: x['camion'].matricula)
+    resumen_meses = [
+        {
+            'mes': m,
+            'mes_nombre': MESES_NOMBRE[m],
+            **metricas_desde_totales(por_mes_raw[m], precios_oficiales.get(m)),
+        }
+        for m in range(1, 13)
+    ]
+
+    años_disponibles = sorted({
+        row[0] for row in (
+            list(db.session.query(RegistroIngreso.anio).distinct().all())
+            + list(db.session.query(RegistroGasoil.anio).distinct().all())
+            + list(db.session.query(RegistroReparto.anio).distinct().all())
+        ) if row[0]
+    } | {anio, datetime.today().year})
+
+    filas_gasoil = []
+    for g in repostajes:
+        litros = g.litros or 0
+        filas_gasoil.append({
+            'registro': g,
+            'mes_nombre': MESES_NOMBRE.get(g.mes, g.mes),
+            'precio_neto': (g.gasto_neto / litros) if litros else None,
+            'precio_con_iva': (g.gasto_con_iva / litros) if litros and g.gasto_con_iva else None,
+        })
+
+    return {
+        'filas': filas,
+        'filas_ingresos': ingresos,
+        'filas_gasoil': filas_gasoil,
+        'resumen_camiones': resumen_camiones,
+        'resumen_meses': resumen_meses,
+        'totales': totales_metricas,
+        'camiones': camiones,
+        'años_disponibles': años_disponibles,
+        'precios_oficiales': precios_oficiales,
+        'repartos': RegistroReparto.query.filter_by(anio=anio).order_by(RegistroReparto.mes, RegistroReparto.tipo).all() if not mes else RegistroReparto.query.filter_by(anio=anio, mes=mes).order_by(RegistroReparto.tipo).all(),
+    }
+
+def _punto_grafica(nombre, metricas):
+    ingresos = metricas.get('ingresos_totales') or 0
+    gasoil = metricas.get('gasto_gasoil') or 0
+    return {
+        'nombre': nombre,
+        'km': round(metricas.get('km') or 0, 0),
+        'ingresos': round(ingresos, 2),
+        'gasoil': round(gasoil, 2),
+        'diferencia': round(ingresos - gasoil, 2),
+        'incidencia': None if metricas.get('incidencia') is None else round(metricas['incidencia'], 1),
+        'precio_l': None if metricas.get('precio_echado') is None else round(metricas['precio_echado'], 3),
+        'cobrado_km': None if metricas.get('cobrado_km') is None else round(metricas['cobrado_km'], 3),
+        'gasto_km': None if metricas.get('gasoil_km') is None else round(metricas['gasoil_km'], 3),
+        'litros': round(metricas.get('litros') or 0, 1),
+    }
+
+@app.route('/analisis')
+@login_required
+def analisis():
+    """Dashboard: cruza ingresos y varios repostajes por camión y mes."""
+    anio, mes, camion_id = _filtros_analisis()
+    datos = _resumen_analisis(anio, mes, camion_id)
+    return render_template(
+        'analisis.html',
+        filas=datos['filas'],
+        filas_ingresos=datos['filas_ingresos'],
+        filas_gasoil=datos['filas_gasoil'],
+        resumen_camiones=datos['resumen_camiones'],
+        totales=datos['totales'],
+        camiones=datos['camiones'],
+        anio=anio,
+        mes=mes,
+        camion_id=camion_id,
+        meses=MESES_NOMBRE,
+        años_disponibles=datos['años_disponibles'],
+        precios_oficiales=datos['precios_oficiales'],
+        repartos=datos['repartos'],
+    )
+
+@app.route('/analisis/grafica')
+@login_required
+def grafica_analisis():
+    """Vista gráfica del mes: km, ingresos, gasoil, repercusión y €/km."""
+    anio, mes, camion_id = _filtros_analisis()
+    if 'mes' not in request.args:
+        datos_anio = _resumen_analisis(anio, 0, camion_id)
+        meses_con_datos = [fila['mes'] for fila in datos_anio['filas']]
+        mes = max(meses_con_datos) if meses_con_datos else datetime.today().month
+    datos = _resumen_analisis(anio, mes, camion_id)
+    datos_anio = _resumen_analisis(anio, 0, camion_id)
+    camiones_serie = [
+        _punto_grafica(fila['camion'].etiqueta() if fila['camion'] else 'Camión', fila)
+        for fila in datos['resumen_camiones']
+    ]
+    meses_serie = [
+        _punto_grafica(fila['mes_nombre'], fila)
+        for fila in datos_anio['resumen_meses']
+        if (fila.get('km') or 0) or (fila.get('ingresos_totales') or 0) or (fila.get('gasto_gasoil') or 0)
+    ]
+    return render_template(
+        'analisis_grafica.html',
+        totales=_punto_grafica('Total', datos['totales']),
+        camiones_serie=camiones_serie,
+        meses_serie=meses_serie,
+        camiones=datos['camiones'],
+        anio=anio,
+        mes=mes,
+        camion_id=camion_id,
+        meses=MESES_NOMBRE,
+        años_disponibles=datos['años_disponibles'],
+        titulo_periodo=MESES_NOMBRE.get(mes, 'Año') + f' {anio}' if mes else f'Año {anio}',
+    )
+
+@app.route('/analisis/registro/nuevo')
+@login_required
+def nuevo_registro_analisis():
+    return redirect(url_for('nuevo_ingreso_analisis', **request.args))
+
+@app.route('/analisis/ingresos/nuevo', methods=['GET', 'POST'])
+@login_required
+def nuevo_ingreso_analisis():
+    return _guardar_ingreso_analisis()
+
+@app.route('/analisis/ingresos/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
+def editar_ingreso_analisis(id):
+    return _guardar_ingreso_analisis(RegistroIngreso.query.get_or_404(id))
+
+def _guardar_ingreso_analisis(registro=None):
+    camiones = _camiones_para_formulario(registro)
+    if not camiones and request.method == 'GET':
+        flash('Primero debes dar de alta al menos un camión.', 'error')
+        return redirect(url_for('listar_camiones_analisis'))
+    hoy = datetime.today()
+    if request.method == 'POST':
+        camion_id = parsear_entero_form(request.form.get('camion_id'))
+        anio = parsear_entero_form(request.form.get('anio'), hoy.year)
+        mes = parsear_entero_form(request.form.get('mes'), hoy.month)
+        camion = Camion.query.get(camion_id)
+        if not camion or mes < 1 or mes > 12:
+            flash('Selecciona un camión y un mes válidos.', 'error')
+        else:
+            existente = RegistroIngreso.query.filter_by(camion_id=camion_id, anio=anio, mes=mes).first()
+            if existente and (registro is None or existente.id != registro.id):
+                flash('Ya hay ingresos de ese camión y mes. Se ha abierto para editarlos.', 'error')
+                return redirect(url_for('editar_ingreso_analisis', id=existente.id))
+            if registro is None:
+                registro = RegistroIngreso()
+                db.session.add(registro)
+            registro.camion_id = camion_id
+            registro.anio = anio
+            registro.mes = mes
+            registro.ingreso_ruta = parsear_float_form(request.form.get('ingreso_ruta'))
+            registro.ingreso_chofer_adicional = parsear_float_form(request.form.get('ingreso_chofer_adicional'))
+            registro.ingreso_extra = parsear_float_form(request.form.get('ingreso_extra'))
+            registro.ingreso_autopista = parsear_float_form(request.form.get('ingreso_autopista'))
+            registro.incremento_combustible = parsear_float_form(request.form.get('incremento_combustible'))
+            registro.observaciones = (request.form.get('observaciones') or '').strip() or None
+            db.session.flush()
+            _guardar_tramos_ingreso(registro)
+            km_form = (request.form.get('km_realizados') or '').strip()
+            if km_form:
+                registro.km_realizados = parsear_float_form(km_form)
+            elif registro.tramos:
+                registro.km_realizados = sum(t.km_tramo() for t in registro.tramos)
+            else:
+                registro.km_realizados = 0
+            try:
+                commit_seguro("guardar ingresos de análisis")
+                flash('Ingresos guardados correctamente.', 'success')
+                return redirect(url_for('analisis', anio=anio, mes=mes, camion_id=camion_id))
+            except IntegrityError:
+                db.session.rollback()
+                flash('Ya existe un registro de ingresos para ese camión y mes.', 'error')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error al guardar los ingresos: {str(e)}', 'error')
+    return render_template(
+        'analisis_ingreso_form.html',
+        registro=registro,
+        camiones=camiones,
+        meses=MESES_NOMBRE,
+        anio_actual=hoy.year,
+        anio_pref=parsear_entero_form(request.args.get('anio'), hoy.year),
+        mes_pref=parsear_entero_form(request.args.get('mes'), hoy.month),
+        camion_pref=parsear_entero_form(request.args.get('camion_id'), 0),
+        rutas=_rutas_para_formulario(registro),
+        tramos=list(registro.tramos) if registro else [],
+    )
+
+@app.route('/analisis/ingresos/borrar/<int:id>', methods=['POST'])
+@login_required
+def borrar_ingreso_analisis(id):
+    registro = RegistroIngreso.query.get_or_404(id)
+    anio = registro.anio
+    try:
+        db.session.delete(registro)
+        commit_seguro("borrar ingresos de análisis")
+        flash('Ingresos borrados correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al borrar los ingresos: {str(e)}', 'error')
+    return redirect(url_for('analisis', anio=anio))
+
+def _guardar_tramos_ingreso(registro):
+    for tramo in list(registro.tramos):
+        db.session.delete(tramo)
+    db.session.flush()
+    ruta_ids = request.form.getlist('tramo_ruta_id')
+    viajes_list = request.form.getlist('tramo_viajes')
+    for ruta_id_str, viajes_str in zip(ruta_ids, viajes_list):
+        ruta_id = parsear_entero_form(ruta_id_str)
+        num_viajes = parsear_float_form(viajes_str)
+        if not ruta_id or num_viajes <= 0:
+            continue
+        ruta = Ruta.query.get(ruta_id)
+        if not ruta:
+            continue
+        db.session.add(RegistroIngresoTramo(
+            ingreso=registro,
+            ruta_id=ruta.id,
+            num_viajes=num_viajes,
+        ))
+    db.session.flush()
+
+@app.route('/analisis/rutas', methods=['GET', 'POST'])
+@login_required
+def listar_rutas_analisis():
+    if request.method == 'POST':
+        nombre = (request.form.get('nombre') or '').strip()
+        km = parsear_float_form(request.form.get('km'))
+        observaciones = (request.form.get('observaciones') or '').strip() or None
+        if not nombre:
+            flash('El nombre de la ruta es obligatorio.', 'error')
+        elif km <= 0:
+            flash('Los km de la ruta deben ser mayores que 0.', 'error')
+        elif Ruta.query.filter_by(nombre=nombre).first():
+            flash('Ya existe una ruta con ese nombre.', 'error')
+        else:
+            db.session.add(Ruta(nombre=nombre, km=km, observaciones=observaciones, activa=True))
+            try:
+                commit_seguro("crear ruta")
+                flash('Ruta añadida correctamente.', 'success')
+                return redirect(url_for('listar_rutas_analisis'))
+            except IntegrityError:
+                db.session.rollback()
+                flash('Ya existe una ruta con ese nombre.', 'error')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error al crear la ruta: {str(e)}', 'error')
+    rutas = Ruta.query.order_by(Ruta.nombre).all()
+    return render_template('analisis_rutas.html', rutas=rutas)
+
+@app.route('/analisis/rutas/editar/<int:id>', methods=['POST'])
+@login_required
+def editar_ruta_analisis(id):
+    ruta = Ruta.query.get_or_404(id)
+    nombre = (request.form.get('nombre') or '').strip()
+    km = parsear_float_form(request.form.get('km'))
+    observaciones = (request.form.get('observaciones') or '').strip() or None
+    activa = request.form.get('activa') == 'on'
+    if not nombre or km <= 0:
+        flash('Nombre y km de la ruta son obligatorios.', 'error')
+        return redirect(url_for('listar_rutas_analisis'))
+    duplicado = Ruta.query.filter(Ruta.nombre == nombre, Ruta.id != ruta.id).first()
+    if duplicado:
+        flash('Ya existe otra ruta con ese nombre.', 'error')
+        return redirect(url_for('listar_rutas_analisis'))
+    ruta.nombre = nombre
+    ruta.km = km
+    ruta.observaciones = observaciones
+    ruta.activa = activa
+    for tramo in ruta.tramos:
+        if tramo.ingreso:
+            tramo.ingreso.km_realizados = sum(t.km_tramo() for t in tramo.ingreso.tramos)
+    try:
+        commit_seguro("editar ruta")
+        flash('Ruta actualizada correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al actualizar la ruta: {str(e)}', 'error')
+    return redirect(url_for('listar_rutas_analisis'))
+
+@app.route('/analisis/rutas/borrar/<int:id>', methods=['POST'])
+@login_required
+def borrar_ruta_analisis(id):
+    ruta = Ruta.query.get_or_404(id)
+    if ruta.tramos:
+        flash('No se puede borrar la ruta porque está usada en ingresos. Desactívala si ya no se usa.', 'error')
+        return redirect(url_for('listar_rutas_analisis'))
+    try:
+        db.session.delete(ruta)
+        commit_seguro("borrar ruta")
+        flash('Ruta borrada correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al borrar la ruta: {str(e)}', 'error')
+    return redirect(url_for('listar_rutas_analisis'))
+
+@app.route('/analisis/gasoil/nuevo', methods=['GET', 'POST'])
+@login_required
+def nuevo_gasoil_analisis():
+    return _guardar_gasoil_analisis()
+
+@app.route('/analisis/gasoil/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
+def editar_gasoil_analisis(id):
+    return _guardar_gasoil_analisis(RegistroGasoil.query.get_or_404(id))
+
+def _guardar_gasoil_analisis(registro=None):
+    camiones = _camiones_para_formulario(registro)
+    if not camiones and request.method == 'GET':
+        flash('Primero debes dar de alta al menos un camión.', 'error')
+        return redirect(url_for('listar_camiones_analisis'))
+    hoy = datetime.today()
+    marcas = valores_distintos(RegistroGasoil, RegistroGasoil.marca_gasolinera, MARCAS_GASOLINERA)
+    tipos = valores_distintos(RegistroGasoil, RegistroGasoil.tipo_gasoil, TIPOS_GASOIL)
+    if request.method == 'POST':
+        camion_id = parsear_entero_form(request.form.get('camion_id'))
+        anio = parsear_entero_form(request.form.get('anio'), hoy.year)
+        mes = parsear_entero_form(request.form.get('mes'), hoy.month)
+        camion = Camion.query.get(camion_id)
+        if not camion or mes < 1 or mes > 12:
+            flash('Selecciona un camión y un mes válidos.', 'error')
+        else:
+            if registro is None:
+                registro = RegistroGasoil()
+                db.session.add(registro)
+            con_iva = parsear_float_form(request.form.get('gasto_con_iva'))
+            bonificacion = parsear_float_form(request.form.get('bonificacion'))
+            iva_porcentaje = parsear_float_form(request.form.get('iva_porcentaje'), 21)
+            if iva_porcentaje not in TIPOS_IVA:
+                iva_porcentaje = 21
+            sin_iva, neto = calcular_gasoil_desglose(con_iva, bonificacion, iva_porcentaje)
+            registro.camion_id = camion_id
+            registro.anio = anio
+            registro.mes = mes
+            registro.marca_gasolinera = (request.form.get('marca_gasolinera') or '').strip() or 'Sin especificar'
+            registro.tipo_gasoil = (request.form.get('tipo_gasoil') or '').strip() or 'Gasóleo A'
+            registro.litros = parsear_float_form(request.form.get('litros'))
+            registro.gasto_con_iva = con_iva
+            registro.gasto_sin_iva = sin_iva
+            registro.bonificacion = bonificacion
+            registro.gasto_neto = neto
+            registro.gasto_addblue = parsear_float_form(request.form.get('gasto_addblue'))
+            registro.iva_porcentaje = iva_porcentaje
+            registro.observaciones = (request.form.get('observaciones') or '').strip() or None
+            try:
+                commit_seguro("guardar gasoil de análisis")
+                flash('Registro de gasoil guardado. Puedes añadir otro de otra gasolinera o tipo.', 'success')
+                return redirect(url_for('analisis', anio=anio, mes=mes, camion_id=camion_id))
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error al guardar el gasoil: {str(e)}', 'error')
+    return render_template(
+        'analisis_gasoil_form.html',
+        registro=registro,
+        camiones=camiones,
+        meses=MESES_NOMBRE,
+        marcas=marcas,
+        tipos=tipos,
+        tipos_iva=TIPOS_IVA,
+        anio_actual=hoy.year,
+        iva_gasoil=IVA_GASOIL,
+        anio_pref=parsear_entero_form(request.args.get('anio'), hoy.year),
+        mes_pref=parsear_entero_form(request.args.get('mes'), hoy.month),
+        camion_pref=parsear_entero_form(request.args.get('camion_id'), 0),
+    )
+
+@app.route('/analisis/gasoil/borrar/<int:id>', methods=['POST'])
+@login_required
+def borrar_gasoil_analisis(id):
+    registro = RegistroGasoil.query.get_or_404(id)
+    anio = registro.anio
+    try:
+        db.session.delete(registro)
+        commit_seguro("borrar gasoil de análisis")
+        flash('Registro de gasoil borrado correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al borrar el gasoil: {str(e)}', 'error')
+    return redirect(url_for('analisis', anio=anio))
+
+@app.route('/analisis/camiones', methods=['GET', 'POST'])
+@login_required
+def listar_camiones_analisis():
+    if request.method == 'POST':
+        matricula = (request.form.get('matricula') or '').upper().strip()
+        alias = (request.form.get('alias') or '').strip() or None
+        if not matricula:
+            flash('La matrícula es obligatoria.', 'error')
+        elif Camion.query.filter_by(matricula=matricula).first():
+            flash('Ya existe un camión con esa matrícula.', 'error')
+        else:
+            db.session.add(Camion(matricula=matricula, alias=alias, activo=True))
+            try:
+                commit_seguro("crear camión")
+                flash('Camión añadido correctamente.', 'success')
+                return redirect(url_for('listar_camiones_analisis'))
+            except IntegrityError:
+                db.session.rollback()
+                flash('Ya existe un camión con esa matrícula.', 'error')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error al crear el camión: {str(e)}', 'error')
+
+    camiones = Camion.query.order_by(Camion.matricula).all()
+    return render_template('analisis_camiones.html', camiones=camiones)
+
+@app.route('/analisis/camiones/editar/<int:id>', methods=['POST'])
+@login_required
+def editar_camion_analisis(id):
+    camion = Camion.query.get_or_404(id)
+    matricula = (request.form.get('matricula') or '').upper().strip()
+    alias = (request.form.get('alias') or '').strip() or None
+    activo = request.form.get('activo') == 'on'
+    if not matricula:
+        flash('La matrícula es obligatoria.', 'error')
+        return redirect(url_for('listar_camiones_analisis'))
+    duplicado = Camion.query.filter(Camion.matricula == matricula, Camion.id != camion.id).first()
+    if duplicado:
+        flash('Ya existe otro camión con esa matrícula.', 'error')
+        return redirect(url_for('listar_camiones_analisis'))
+    camion.matricula = matricula
+    camion.alias = alias
+    camion.activo = activo
+    try:
+        commit_seguro("editar camión")
+        flash('Camión actualizado correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al actualizar el camión: {str(e)}', 'error')
+    return redirect(url_for('listar_camiones_analisis'))
+
+@app.route('/analisis/camiones/borrar/<int:id>', methods=['POST'])
+@login_required
+def borrar_camion_analisis(id):
+    camion = Camion.query.get_or_404(id)
+    if camion.ingresos or camion.repostajes:
+        flash('No se puede borrar el camión porque tiene registros de análisis. Desactívalo si ya no se usa.', 'error')
+        return redirect(url_for('listar_camiones_analisis'))
+    try:
+        db.session.delete(camion)
+        commit_seguro("borrar camión")
+        flash('Camión borrado correctamente.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al borrar el camión: {str(e)}', 'error')
+    return redirect(url_for('listar_camiones_analisis'))
+
+@app.route('/analisis/camiones/importar_xpo', methods=['POST'])
+@login_required
+def importar_camiones_xpo():
+    matriculas = db.session.query(ViajeXPO.matricula_cabeza).distinct().all()
+    creados = 0
+    for (matricula,) in matriculas:
+        if not matricula:
+            continue
+        matricula = matricula.upper().strip()
+        if not Camion.query.filter_by(matricula=matricula).first():
+            db.session.add(Camion(matricula=matricula, activo=True))
+            creados += 1
+    try:
+        if creados:
+            commit_seguro("importar camiones desde XPO")
+        flash(f'Se importaron {creados} camiones desde Control XPO.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al importar camiones: {str(e)}', 'error')
+    return redirect(url_for('listar_camiones_analisis'))
+
+@app.route('/analisis/precios', methods=['GET', 'POST'])
+@login_required
+def precios_oficiales_gasoil():
+    hoy = datetime.today()
+    anio = parsear_entero_form(request.values.get('anio', hoy.year), hoy.year)
+
+    if request.method == 'POST':
+        try:
+            for mes in range(1, 13):
+                texto = (request.form.get(f'precio_{mes}') or '').strip()
+                existente = PrecioGasoilOficial.query.filter_by(anio=anio, mes=mes).first()
+                if texto == '':
+                    if existente:
+                        db.session.delete(existente)
+                    continue
+                precio = parsear_float_form(texto, None)
+                if precio is None or precio <= 0:
+                    continue
+                if existente:
+                    existente.precio = precio
+                else:
+                    db.session.add(PrecioGasoilOficial(anio=anio, mes=mes, precio=precio))
+            commit_seguro("guardar precios oficiales de gasoil")
+            flash('Precios oficiales guardados correctamente.', 'success')
+            return redirect(url_for('precios_oficiales_gasoil', anio=anio))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al guardar los precios: {str(e)}', 'error')
+
+    existentes = {
+        p.mes: p.precio
+        for p in PrecioGasoilOficial.query.filter_by(anio=anio).all()
+    }
+    meses_precios = [
+        {'mes': mes, 'nombre': MESES_NOMBRE[mes], 'precio': existentes.get(mes)}
+        for mes in range(1, 13)
+    ]
+    años_disponibles = sorted({
+        row[0] for row in db.session.query(PrecioGasoilOficial.anio).distinct().all() if row[0]
+    } | {anio, hoy.year, hoy.year - 1, hoy.year + 1})
+    return render_template(
+        'analisis_precios.html',
+        anio=anio,
+        meses_precios=meses_precios,
+        años_disponibles=años_disponibles,
+        meses=MESES_NOMBRE,
+    )
+
+@app.route('/analisis/repartos', methods=['GET', 'POST'])
+@login_required
+def repartos_analisis():
+    """Bonus calidad y suplemento HVO mensuales, repartidos por km de cada camión."""
+    hoy = datetime.today()
+    anio = parsear_entero_form(request.values.get('anio', hoy.year), hoy.year)
+    mes_prev = parsear_entero_form(request.values.get('mes', hoy.month), hoy.month)
+    if mes_prev < 1 or mes_prev > 12:
+        mes_prev = hoy.month
+
+    if request.method == 'POST':
+        try:
+            for mes in range(1, 13):
+                for tipo, _nombre in TIPOS_REPARTO:
+                    texto = (request.form.get(f'{tipo}_{mes}') or '').strip()
+                    existente = RegistroReparto.query.filter_by(anio=anio, mes=mes, tipo=tipo).first()
+                    if texto == '':
+                        if existente:
+                            db.session.delete(existente)
+                        continue
+                    importe = parsear_float_form(texto)
+                    if existente:
+                        existente.importe = importe
+                    else:
+                        db.session.add(RegistroReparto(anio=anio, mes=mes, tipo=tipo, importe=importe))
+            commit_seguro("guardar bonus calidad y suplemento HVO")
+            flash('Repartos guardados. Se aplican a cada camión según sus km del mes.', 'success')
+            return redirect(url_for('repartos_analisis', anio=anio, mes=mes_prev))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al guardar los repartos: {str(e)}', 'error')
+
+    existentes = {}
+    for r in RegistroReparto.query.filter_by(anio=anio).all():
+        existentes[(r.mes, r.tipo)] = r.importe
+
+    km_flota = _km_flota_por_mes(anio)
+    camiones = {c.id: c for c in Camion.query.order_by(Camion.matricula).all()}
+    km_json = {}
+    for mes, datos in km_flota.items():
+        km_json[str(mes)] = {
+            'total': datos['total'],
+            'camiones': [
+                {
+                    'id': cid,
+                    'nombre': camiones[cid].etiqueta() if cid in camiones else str(cid),
+                    'km': km,
+                }
+                for cid, km in sorted(datos['por_camion'].items(), key=lambda x: (camiones[x[0]].matricula if x[0] in camiones else ''))
+                if km > 0
+            ],
+        }
+
+    meses_reparto = []
+    for mes in range(1, 13):
+        meses_reparto.append({
+            'mes': mes,
+            'nombre': MESES_NOMBRE[mes],
+            'bonus_calidad': existentes.get((mes, 'bonus_calidad')),
+            'suplemento_hvo': existentes.get((mes, 'suplemento_hvo')),
+            'km_total': (km_flota.get(mes) or {}).get('total') or 0,
+        })
+
+    años_disponibles = sorted({
+        row[0] for row in (
+            list(db.session.query(RegistroIngreso.anio).distinct().all())
+            + list(db.session.query(RegistroReparto.anio).distinct().all())
+        ) if row[0]
+    } | {anio, hoy.year, hoy.year - 1, hoy.year + 1})
+
+    return render_template(
+        'analisis_repartos.html',
+        anio=anio,
+        mes_prev=mes_prev,
+        meses_reparto=meses_reparto,
+        km_json=km_json,
+        años_disponibles=años_disponibles,
+        meses=MESES_NOMBRE,
+    )
+
 # Función para migrar la base de datos y agregar nuevos campos
 def migrar_base_datos():
     """Migra la base de datos para agregar campos de declaración IVA"""
@@ -3061,6 +4175,7 @@ def iniciar_bot_telegram():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        asegurar_esquema_analisis()
     
     # Iniciar el bot de Telegram antes de iniciar Flask
     iniciar_bot_telegram()

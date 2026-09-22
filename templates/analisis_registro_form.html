@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if registro and registro.id %}Editar registro{% else %}Nuevo registro{% endif %} - Análisis</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 880px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 28px;
+            text-align: center;
+        }
+        .header h1 { margin: 0; font-weight: 300; }
+        .content { padding: 28px; }
+        .flash-message { padding: 12px 18px; border-radius: 8px; margin-bottom: 12px; }
+        .flash-success { background: #d4edda; color: #155724; }
+        .flash-error { background: #f8d7da; color: #721c24; }
+        fieldset {
+            border: 1px solid #e1e5e9;
+            border-radius: 10px;
+            padding: 18px;
+            margin-bottom: 18px;
+        }
+        legend { font-weight: 700; color: #333; padding: 0 8px; }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .form-row-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 600; color: #333; font-size: 0.92em; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+            font-size: 1em;
+        }
+        .help { font-size: 0.8em; color: #666; margin-top: 4px; }
+        .calc-field {
+            background: #f3f4f8;
+            font-weight: 600;
+            color: #333;
+        }
+        .calc {
+            background: #eef2ff;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 18px;
+        }
+        .calc strong { color: #333; }
+        .buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .btn {
+            padding: 12px 22px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            color: white;
+            background: #667eea;
+        }
+        .btn-secondary { background: #6c757d; }
+        @media (max-width: 768px) {
+            .form-row, .form-row-4 { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{% if registro and registro.id %}Editar registro{% else %}Nuevo registro{% endif %}</h1>
+        </div>
+        <div class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="post" id="registroForm">
+                <fieldset>
+                    <legend>Camión y periodo</legend>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="camion_id">Camión</label>
+                            <select id="camion_id" name="camion_id" required>
+                                <option value="">Selecciona un camión</option>
+                                {% for camion in camiones %}
+                                <option value="{{ camion.id }}" {% if registro and registro.camion_id == camion.id %}selected{% endif %}>{{ camion.etiqueta() }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="anio">Año</label>
+                            <input type="number" id="anio" name="anio" min="2020" max="{{ anio_actual + 1 }}"
+                                   value="{{ registro.anio if registro else anio_actual }}" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="mes">Mes</label>
+                        <select id="mes" name="mes" required>
+                            {% for num, nombre in meses.items() %}
+                            <option value="{{ num }}" {% if (registro and registro.mes == num) or (not registro and num == datetime.now().month) %}selected{% endif %}>{{ nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="km_realizados">Km realizados</label>
+                        <input type="text" inputmode="decimal" id="km_realizados" name="km_realizados"
+                               value="{{ registro.km_realizados if registro else '' }}" placeholder="0">
+                    </div>
+                </fieldset>
+
+                <fieldset>
+                    <legend>Ingresos</legend>
+                    <div class="form-row-4">
+                        <div class="form-group">
+                            <label for="ingreso_ruta">Ruta €</label>
+                            <input type="text" inputmode="decimal" id="ingreso_ruta" name="ingreso_ruta"
+                                   value="{{ registro.ingreso_ruta if registro else '' }}" placeholder="0,00">
+                        </div>
+                        <div class="form-group">
+                            <label for="ingreso_chofer_adicional">Chofer adicional €</label>
+                            <input type="text" inputmode="decimal" id="ingreso_chofer_adicional" name="ingreso_chofer_adicional"
+                                   value="{{ registro.ingreso_chofer_adicional if registro else '' }}" placeholder="0,00">
+                        </div>
+                        <div class="form-group">
+                            <label for="ingreso_extra">Extra €</label>
+                            <input type="text" inputmode="decimal" id="ingreso_extra" name="ingreso_extra"
+                                   value="{{ registro.ingreso_extra if registro else '' }}" placeholder="0,00">
+                        </div>
+                        <div class="form-group">
+                            <label for="ingreso_autopista">Autopista €</label>
+                            <input type="text" inputmode="decimal" id="ingreso_autopista" name="ingreso_autopista"
+                                   value="{{ registro.ingreso_autopista if registro else '' }}" placeholder="0,00">
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset>
+                    <legend>Gastos y descuentos</legend>
+                    <div class="form-row-4">
+                        <div class="form-group">
+                            <label for="gasto_gasoil_con_iva">Gasoil con IVA €</label>
+                            <input type="text" inputmode="decimal" id="gasto_gasoil_con_iva" name="gasto_gasoil_con_iva"
+                                   value="{{ registro.gasto_gasoil_con_iva if registro and registro.gasto_gasoil_con_iva else '' }}" placeholder="0,00">
+                            <div class="help">Importe que pagas, con IVA</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="gasto_gasoil_sin_iva">Gasoil sin IVA €</label>
+                            <input type="text" id="gasto_gasoil_sin_iva" name="gasto_gasoil_sin_iva" readonly class="calc-field"
+                                   value="{{ '%.2f'|format(registro.gasto_gasoil_sin_iva) if registro and registro.gasto_gasoil_sin_iva else '' }}" placeholder="0,00">
+                            <div class="help">Calculado automáticamente (IVA {{ '%.0f'|format((iva_gasoil or 0.21) * 100) }} %)</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="bonificacion_gasoil">Bonificación €</label>
+                            <input type="text" inputmode="decimal" id="bonificacion_gasoil" name="bonificacion_gasoil"
+                                   value="{{ registro.bonificacion_gasoil if registro and registro.bonificacion_gasoil else '' }}" placeholder="0,00">
+                            <div class="help">Se resta del gasoil sin IVA</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="gasto_gasoil_neto">Gasoil neto €</label>
+                            <input type="text" id="gasto_gasoil_neto" readonly class="calc-field"
+                                   value="{{ '%.2f'|format(registro.gasto_gasoil) if registro and registro.gasto_gasoil else '' }}" placeholder="0,00">
+                            <div class="help">Sin IVA − bonificación (el que se usa en el análisis)</div>
+                        </div>
+                    </div>
+                    <div class="form-row-4">
+                        <div class="form-group">
+                            <label for="litros_gasoil">Litros gasoil</label>
+                            <input type="text" inputmode="decimal" id="litros_gasoil" name="litros_gasoil"
+                                   value="{{ registro.litros_gasoil if registro else '' }}" placeholder="0,00">
+                            <div class="help">Acepta decimales con coma o punto (ej. 3827,02)</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="gasto_addblue">AdBlue €</label>
+                            <input type="text" inputmode="decimal" id="gasto_addblue" name="gasto_addblue"
+                                   value="{{ registro.gasto_addblue if registro else '' }}" placeholder="0,00">
+                        </div>
+                        <div class="form-group">
+                            <label for="incremento_combustible">Incremento combustible €</label>
+                            <input type="text" inputmode="decimal" id="incremento_combustible" name="incremento_combustible"
+                                   value="{{ registro.incremento_combustible if registro else '' }}" placeholder="0,00">
+                            <div class="help">Puede ser positivo o negativo</div>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <div class="calc" id="calcBox">
+                    Ingresos: <strong id="cIngresos">0.00 €</strong> ·
+                    Incremento: <strong id="cIncremento">0.00 €</strong> ·
+                    Total cobrado: <strong id="cTotal">0.00 €</strong><br>
+                    Gasoil sin IVA: <strong id="cSinIva">—</strong> ·
+                    Neto: <strong id="cNeto">—</strong> ·
+                    €/L neto: <strong id="cPrecioL">—</strong> ·
+                    €/L con IVA: <strong id="cPrecioLIva">—</strong><br>
+                    Incidencia gasoil: <strong id="cIncidencia">—</strong> ·
+                    Cobrado/km: <strong id="cKm">—</strong>
+                </div>
+
+                <div class="form-group">
+                    <label for="observaciones">Observaciones</label>
+                    <input type="text" id="observaciones" name="observaciones" maxlength="255"
+                           value="{{ registro.observaciones if registro and registro.observaciones else '' }}">
+                </div>
+
+                <div class="buttons">
+                    <button type="submit" class="btn">{% if registro and registro.id %}Guardar cambios{% else %}Guardar registro{% endif %}</button>
+                    <a href="{{ url_for('analisis') }}" class="btn btn-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        const IVA = 1 + {{ iva_gasoil|default(0.21) }};
+        function n(id) {
+            const el = document.getElementById(id);
+            if (!el) return 0;
+            let t = String(el.value).replace(/\s/g, '');
+            if (t.indexOf(',') >= 0 && t.indexOf('.') >= 0) {
+                t = t.replace(/\./g, '').replace(',', '.');
+            } else {
+                t = t.replace(',', '.');
+            }
+            const v = parseFloat(t);
+            return isNaN(v) ? 0 : v;
+        }
+        function recalc() {
+            const ingresos = n('ingreso_ruta') + n('ingreso_chofer_adicional') + n('ingreso_extra') + n('ingreso_autopista');
+            const incremento = n('incremento_combustible');
+            const total = ingresos + incremento;
+            const conIva = n('gasto_gasoil_con_iva');
+            const bonif = n('bonificacion_gasoil');
+            const sinIva = conIva / IVA;
+            const neto = sinIva - bonif;
+            const litros = n('litros_gasoil');
+            const km = n('km_realizados');
+
+            const sinIvaEl = document.getElementById('gasto_gasoil_sin_iva');
+            const netoEl = document.getElementById('gasto_gasoil_neto');
+            if (conIva || bonif) {
+                sinIvaEl.value = sinIva.toFixed(2);
+                netoEl.value = neto.toFixed(2);
+            } else {
+                sinIvaEl.value = '';
+                netoEl.value = '';
+            }
+
+            document.getElementById('cIngresos').textContent = ingresos.toFixed(2) + ' €';
+            document.getElementById('cIncremento').textContent = incremento.toFixed(2) + ' €';
+            document.getElementById('cTotal').textContent = total.toFixed(2) + ' €';
+            document.getElementById('cSinIva').textContent = sinIva.toFixed(2) + ' €';
+            document.getElementById('cNeto').textContent = neto.toFixed(2) + ' €';
+            document.getElementById('cPrecioL').textContent = litros > 0 ? (neto / litros).toFixed(3) + ' €/L' : '—';
+            document.getElementById('cPrecioLIva').textContent = litros > 0 && conIva ? (conIva / litros).toFixed(3) + ' €/L' : '—';
+            document.getElementById('cIncidencia').textContent = total > 0 ? ((neto / total) * 100).toFixed(1) + '%' : '—';
+            document.getElementById('cKm').textContent = km > 0 ? (total / km).toFixed(3) + ' €/km' : '—';
+        }
+        document.querySelectorAll('#registroForm input').forEach(el => el.addEventListener('input', recalc));
+        recalc();
+    </script>
+</body>
+</html>

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bonus calidad y HVO - Análisis</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 28px;
+            text-align: center;
+        }
+        .header h1 { margin: 0; font-weight: 300; }
+        .header p { margin: 8px 0 0 0; opacity: 0.9; }
+        .content { padding: 28px; }
+        .flash-message { padding: 12px 18px; border-radius: 8px; margin-bottom: 12px; }
+        .flash-success { background: #d4edda; color: #155724; }
+        .flash-error { background: #f8d7da; color: #721c24; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        .btn {
+            padding: 10px 18px; border: none; border-radius: 8px; font-weight: 600;
+            cursor: pointer; text-decoration: none; color: white; background: #667eea; display: inline-block;
+        }
+        .btn-success { background: #43a047; }
+        .btn-secondary { background: #6c757d; }
+        .year-row { display: flex; gap: 10px; align-items: end; margin-bottom: 18px; }
+        label { display: block; margin-bottom: 6px; font-weight: 600; }
+        select, input[type="text"] {
+            padding: 10px 12px; border: 2px solid #e1e5e9; border-radius: 6px; font-size: 1em;
+        }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+        th, td { padding: 10px 8px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #f3f4f8; }
+        td.num, th.num { text-align: right; }
+        input.importe { width: 130px; }
+        .hint { color: #666; font-size: 0.9em; margin-bottom: 16px; }
+        .card {
+            background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 12px;
+            padding: 16px; margin-top: 8px;
+        }
+        .card h3 { margin: 0 0 8px 0; }
+        .positive { color: #2e7d32; font-weight: 700; }
+        .negative { color: #c62828; font-weight: 700; }
+        .muted { color: #888; }
+        .preview-mes { font-weight: 700; }
+        @media (max-width: 768px) { input.importe { width: 100%; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Bonus calidad y suplemento HVO</h1>
+            <p>Se graban una vez al mes y se reparte el importe (positivo o negativo) según los km de cada camión</p>
+        </div>
+        <div class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="actions">
+                <a href="{{ url_for('analisis', anio=anio) }}" class="btn btn-secondary">← Volver al análisis</a>
+            </div>
+
+            <form method="get" class="year-row">
+                <div>
+                    <label for="anio">Año</label>
+                    <select id="anio" name="anio" onchange="this.form.submit()">
+                        {% for a in años_disponibles %}
+                        <option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+
+            <p class="hint">
+                Pon el total del mes. Si es negativo se trata como gasto. Cada camión recibe
+                <strong>total × (sus km ÷ km de todos)</strong>. Primero introduce los km en ingresos; si aún no hay km, el importe se quedará pendiente hasta que los haya.
+            </p>
+
+            <form method="post" id="repartoForm">
+                <input type="hidden" name="anio" value="{{ anio }}">
+                <input type="hidden" name="mes" id="mesHidden" value="{{ mes_prev }}">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mes</th>
+                            <th class="num">Km flota</th>
+                            <th>Bonus calidad €</th>
+                            <th>Suplemento HVO €</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in meses_reparto %}
+                        <tr class="fila-mes" data-mes="{{ item.mes }}">
+                            <td>{{ item.nombre }}</td>
+                            <td class="num">{% if item.km_total %}{{ "%.0f"|format(item.km_total) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                            <td>
+                                <input class="importe" type="text" inputmode="decimal" name="bonus_calidad_{{ item.mes }}"
+                                       data-tipo="bonus_calidad" data-mes="{{ item.mes }}"
+                                       value="{{ item.bonus_calidad if item.bonus_calidad is not none else '' }}"
+                                       placeholder="0,00">
+                            </td>
+                            <td>
+                                <input class="importe" type="text" inputmode="decimal" name="suplemento_hvo_{{ item.mes }}"
+                                       data-tipo="suplemento_hvo" data-mes="{{ item.mes }}"
+                                       value="{{ item.suplemento_hvo if item.suplemento_hvo is not none else '' }}"
+                                       placeholder="0,00">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <button type="submit" class="btn btn-success">Guardar {{ anio }}</button>
+            </form>
+
+            <div class="card">
+                <h3>Cómo se reparte <span class="preview-mes" id="previewMesNombre">{{ meses[mes_prev] }}</span></h3>
+                <p class="hint" id="previewVacio" style="margin:0;">Elige un mes o escribe un importe para ver el reparto por camión.</p>
+                <div class="table-wrap" id="previewTabla" style="display:none;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Camión</th>
+                                <th class="num">Km</th>
+                                <th class="num">%</th>
+                                <th class="num">Bonus calidad</th>
+                                <th class="num">Suplemento HVO</th>
+                                <th class="num">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="previewBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const kmJson = {{ km_json|tojson }};
+        const mesesNombre = {{ meses|tojson }};
+
+        function parseNum(valor) {
+            let t = String(valor || '').replace(/\s/g, '');
+            if (!t) return 0;
+            if (t.indexOf(',') >= 0 && t.indexOf('.') >= 0) t = t.replace(/\./g, '').replace(',', '.');
+            else t = t.replace(',', '.');
+            const v = parseFloat(t);
+            return isNaN(v) ? 0 : v;
+        }
+        function euro(v) {
+            return v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+        }
+        function actualizarPreview(mes) {
+            mes = String(mes || document.getElementById('mesHidden').value);
+            document.getElementById('mesHidden').value = mes;
+            document.getElementById('previewMesNombre').textContent = mesesNombre[mes] || mes;
+            const datos = kmJson[mes];
+            const bonus = parseNum(document.querySelector('[name="bonus_calidad_' + mes + '"]').value);
+            const hvo = parseNum(document.querySelector('[name="suplemento_hvo_' + mes + '"]').value);
+            const body = document.getElementById('previewBody');
+            const tabla = document.getElementById('previewTabla');
+            const vacio = document.getElementById('previewVacio');
+            if (!datos || !datos.camiones || !datos.camiones.length) {
+                tabla.style.display = 'none';
+                vacio.style.display = 'block';
+                vacio.textContent = 'Este mes aún no hay km en los ingresos. Cuando los pongas, el importe se repartirá solo.';
+                return;
+            }
+            vacio.style.display = 'none';
+            tabla.style.display = 'block';
+            const totalKm = datos.total || 0;
+            let html = '';
+            datos.camiones.forEach(c => {
+                const pct = totalKm ? (c.km / totalKm) : 0;
+                const b = bonus * pct;
+                const h = hvo * pct;
+                const t = b + h;
+                const cls = t < 0 ? 'negative' : (t > 0 ? 'positive' : '');
+                html += '<tr><td>' + c.nombre + '</td>'
+                    + '<td class="num">' + Math.round(c.km).toLocaleString('es-ES') + '</td>'
+                    + '<td class="num">' + (pct * 100).toFixed(1) + ' %</td>'
+                    + '<td class="num ' + (b < 0 ? 'negative' : '') + '">' + euro(b) + '</td>'
+                    + '<td class="num ' + (h < 0 ? 'negative' : '') + '">' + euro(h) + '</td>'
+                    + '<td class="num ' + cls + '">' + euro(t) + '</td></tr>';
+            });
+            html += '<tr><td><strong>Total</strong></td><td class="num"><strong>' + Math.round(totalKm).toLocaleString('es-ES') + '</strong></td><td class="num">100 %</td>'
+                + '<td class="num"><strong>' + euro(bonus) + '</strong></td>'
+                + '<td class="num"><strong>' + euro(hvo) + '</strong></td>'
+                + '<td class="num"><strong>' + euro(bonus + hvo) + '</strong></td></tr>';
+            body.innerHTML = html;
+        }
+        document.querySelectorAll('.importe').forEach(el => {
+            el.addEventListener('input', () => actualizarPreview(el.dataset.mes));
+            el.addEventListener('focus', () => actualizarPreview(el.dataset.mes));
+        });
+        document.querySelectorAll('.fila-mes').forEach(row => {
+            row.addEventListener('click', () => actualizarPreview(row.dataset.mes));
+        });
+        actualizarPreview({{ mes_prev }});
+    </script>
+</body>
+</html>

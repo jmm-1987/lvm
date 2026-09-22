@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if registro and registro.id %}Editar ingresos{% else %}Nuevos ingresos{% endif %} - Análisis</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .container { max-width: 880px; margin: 0 auto; background: white; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 28px; text-align: center; }
+        .header h1 { margin: 0; font-weight: 300; }
+        .content { padding: 28px; }
+        .flash-message { padding: 12px 18px; border-radius: 8px; margin-bottom: 12px; }
+        .flash-success { background: #d4edda; color: #155724; }
+        .flash-error { background: #f8d7da; color: #721c24; }
+        fieldset { border: 1px solid #e1e5e9; border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+        legend { font-weight: 700; color: #333; padding: 0 8px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .form-row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .tramos { display: flex; flex-direction: column; gap: 10px; }
+        .tramo-row { display: grid; grid-template-columns: 2fr 0.8fr 0.8fr 0.8fr auto; gap: 10px; align-items: end; }
+        .tramo-row .subtotal, .tramo-row .km-ruta { background: #f8f9fa; }
+        .btn-add { background: #1976d2; }
+        .btn-remove { background: #e53935; padding: 10px 12px; }
+        .total-km { font-size: 1.05em; }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 600; color: #333; font-size: 0.92em; }
+        .form-group input, .form-group select { width: 100%; padding: 10px 12px; border: 2px solid #e1e5e9; border-radius: 6px; font-size: 1em; }
+        .help { font-size: 0.8em; color: #666; margin-top: 4px; }
+        .calc { background: #eef2ff; border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
+        .buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .btn { padding: 12px 22px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; text-decoration: none; color: white; background: #667eea; }
+        .btn-secondary { background: #6c757d; }
+        @media (max-width: 768px) { .form-row, .form-row-4, .tramo-row { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{% if registro and registro.id %}Editar ingresos{% else %}Nuevos ingresos{% endif %}</h1>
+        </div>
+        <div class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}{% for category, message in messages %}<div class="flash-message flash-{{ category }}">{{ message }}</div>{% endfor %}{% endif %}
+            {% endwith %}
+            <form method="post" id="ingresoForm">
+                <fieldset>
+                    <legend>Camión y periodo</legend>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="camion_id">Camión</label>
+                            <select id="camion_id" name="camion_id" required>
+                                <option value="">Selecciona un camión</option>
+                                {% for camion in camiones %}
+                                <option value="{{ camion.id }}" {% if (registro and registro.camion_id == camion.id) or (not registro and camion_pref == camion.id) %}selected{% endif %}>{{ camion.etiqueta() }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="anio">Año</label>
+                            <input type="number" id="anio" name="anio" min="2020" max="{{ anio_actual + 1 }}"
+                                   value="{{ registro.anio if registro else anio_pref }}" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="mes">Mes</label>
+                        <select id="mes" name="mes" required>
+                            {% for num, nombre in meses.items() %}
+                            <option value="{{ num }}" {% if (registro and registro.mes == num) or (not registro and num == mes_pref) %}selected{% endif %}>{{ nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </fieldset>
+                <fieldset>
+                    <legend>Kilómetros</legend>
+                    <div class="form-group">
+                        <label for="km_realizados">Km realizados</label>
+                        <input type="text" inputmode="decimal" id="km_realizados" name="km_realizados"
+                               value="{{ registro.km_realizados|int if registro and registro.km_realizados == registro.km_realizados|int else (registro.km_realizados if registro else '') }}"
+                               placeholder="0">
+                        <div class="help">Puedes ponerlos a mano. Si usas rutas abajo, se rellenan solos y luego puedes corregirlos.</div>
+                    </div>
+                    {% if not rutas %}
+                    <p class="help">Si quieres calcularlos con rutas, <a href="{{ url_for('listar_rutas_analisis') }}">créalas aquí</a>.</p>
+                    {% endif %}
+                    <div id="tramos" class="tramos">
+                        {% if tramos %}
+                            {% for t in tramos %}
+                            <div class="tramo-row">
+                                <div class="form-group">
+                                    <label>Ruta</label>
+                                    <select name="tramo_ruta_id" class="tramo-ruta">
+                                        <option value="">Selecciona una ruta</option>
+                                        {% for ruta in rutas %}
+                                        <option value="{{ ruta.id }}" data-km="{{ ruta.km }}" {% if t.ruta_id == ruta.id %}selected{% endif %}>{{ ruta.etiqueta() }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Viajes</label>
+                                    <input type="text" inputmode="decimal" name="tramo_viajes" class="tramo-viajes" value="{{ t.num_viajes|int if t.num_viajes == t.num_viajes|int else t.num_viajes }}" placeholder="1">
+                                </div>
+                                <div class="form-group">
+                                    <label>Km / viaje</label>
+                                    <input type="text" class="km-ruta" value="{{ t.ruta.km if t.ruta else 0 }}" readonly>
+                                </div>
+                                <div class="form-group">
+                                    <label>Km tramo</label>
+                                    <input type="text" class="subtotal" value="" readonly>
+                                </div>
+                                <button type="button" class="btn btn-remove" onclick="quitarTramo(this)">Quitar</button>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+                    <div class="buttons" style="justify-content:flex-start; margin: 12px 0 0 0;">
+                        <button type="button" class="btn btn-add" onclick="anadirTramo()">+ Añadir tramo</button>
+                        <a href="{{ url_for('listar_rutas_analisis') }}" class="btn btn-secondary">Gestionar rutas</a>
+                    </div>
+                    <p class="total-km" style="margin: 14px 0 0 0;">Km de rutas: <strong id="kmTotales">0</strong></p>
+                    <div class="help">Opcional: ruta × viajes. El total se copia a «Km realizados» y puedes cambiarlo a mano.</div>
+                </fieldset>
+                <fieldset>
+                    <legend>Ingresos</legend>
+                    <div class="form-row-4">
+                        <div class="form-group">
+                            <label for="ingreso_ruta">Ruta €</label>
+                            <input type="text" inputmode="decimal" id="ingreso_ruta" name="ingreso_ruta" value="{{ registro.ingreso_ruta if registro else '' }}" placeholder="0,00">
+                        </div>
+                        <div class="form-group">
+                            <label for="ingreso_chofer_adicional">Chofer adicional €</label>
+                            <input type="text" inputmode="decimal" id="ingreso_chofer_adicional" name="ingreso_chofer_adicional" value="{{ registro.ingreso_chofer_adicional if registro else '' }}" placeholder="0,00">
+                        </div>
+                        <div class="form-group">
+                            <label for="ingreso_extra">Extra €</label>
+                            <input type="text" inputmode="decimal" id="ingreso_extra" name="ingreso_extra" value="{{ registro.ingreso_extra if registro else '' }}" placeholder="0,00">
+                        </div>
+                        <div class="form-group">
+                            <label for="ingreso_autopista">Autopista €</label>
+                            <input type="text" inputmode="decimal" id="ingreso_autopista" name="ingreso_autopista" value="{{ registro.ingreso_autopista if registro else '' }}" placeholder="0,00">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="incremento_combustible">Incremento combustible €</label>
+                        <input type="text" inputmode="decimal" id="incremento_combustible" name="incremento_combustible" value="{{ registro.incremento_combustible if registro else '' }}" placeholder="0,00">
+                        <div class="help">Puede ser positivo o negativo</div>
+                    </div>
+                </fieldset>
+                <div class="calc">
+                    Ingresos: <strong id="cIngresos">0.00 €</strong> ·
+                    Incremento: <strong id="cIncremento">0.00 €</strong> ·
+                    Total cobrado: <strong id="cTotal">0.00 €</strong> ·
+                    €/km: <strong id="cKm">—</strong>
+                </div>
+                <div class="form-group">
+                    <label for="observaciones">Observaciones</label>
+                    <input type="text" id="observaciones" name="observaciones" maxlength="255" value="{{ registro.observaciones if registro and registro.observaciones else '' }}">
+                </div>
+                <div class="buttons">
+                    <button type="submit" class="btn">Guardar ingresos</button>
+                    <a href="{{ url_for('nuevo_gasoil_analisis') }}" class="btn" style="background:#43a047;">+ Añadir gasoil</a>
+                    <a href="{{ url_for('analisis') }}" class="btn btn-secondary">Volver</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    <template id="tramoPlantilla">
+        <div class="tramo-row">
+            <div class="form-group">
+                <label>Ruta</label>
+                <select name="tramo_ruta_id" class="tramo-ruta">
+                    <option value="">Selecciona una ruta</option>
+                    {% for ruta in rutas %}
+                    <option value="{{ ruta.id }}" data-km="{{ ruta.km }}">{{ ruta.etiqueta() }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Viajes</label>
+                <input type="text" inputmode="decimal" name="tramo_viajes" class="tramo-viajes" value="" placeholder="1">
+            </div>
+            <div class="form-group">
+                <label>Km / viaje</label>
+                <input type="text" class="km-ruta" value="" readonly>
+            </div>
+            <div class="form-group">
+                <label>Km tramo</label>
+                <input type="text" class="subtotal" value="" readonly>
+            </div>
+            <button type="button" class="btn btn-remove" onclick="quitarTramo(this)">Quitar</button>
+        </div>
+    </template>
+    <script>
+        function parseNum(valor) {
+            let t = String(valor || '').replace(/\s/g, '');
+            if (t.indexOf(',') >= 0 && t.indexOf('.') >= 0) t = t.replace(/\./g, '').replace(',', '.');
+            else t = t.replace(',', '.');
+            const v = parseFloat(t);
+            return isNaN(v) ? 0 : v;
+        }
+        function n(id) {
+            const el = document.getElementById(id);
+            return el ? parseNum(el.value) : 0;
+        }
+        function kmTotales() {
+            let total = 0;
+            document.querySelectorAll('#tramos .tramo-row').forEach(row => {
+                const sel = row.querySelector('.tramo-ruta');
+                const opt = sel && sel.selectedOptions[0];
+                const kmRuta = parseNum(opt && opt.dataset.km);
+                const viajes = parseNum(row.querySelector('.tramo-viajes').value);
+                const subtotal = kmRuta * viajes;
+                row.querySelector('.km-ruta').value = kmRuta ? kmRuta.toLocaleString('es-ES') : '';
+                row.querySelector('.subtotal').value = subtotal ? subtotal.toLocaleString('es-ES') : '';
+                total += subtotal;
+            });
+            return total;
+        }
+        function recalc(ev) {
+            const ingresos = n('ingreso_ruta') + n('ingreso_chofer_adicional') + n('ingreso_extra') + n('ingreso_autopista');
+            const incremento = n('incremento_combustible');
+            const total = ingresos + incremento;
+            const kmRutas = kmTotales();
+            const kmInput = document.getElementById('km_realizados');
+            const desdeTramo = ev && ev.target && ev.target.closest && ev.target.closest('.tramo-row');
+            if (kmRutas > 0 && kmInput && document.activeElement !== kmInput && (desdeTramo || !n('km_realizados'))) {
+                kmInput.value = kmRutas.toLocaleString('es-ES');
+            }
+            const km = n('km_realizados') || kmRutas;
+            document.getElementById('kmTotales').textContent = kmRutas.toLocaleString('es-ES');
+            document.getElementById('cIngresos').textContent = ingresos.toFixed(2) + ' €';
+            document.getElementById('cIncremento').textContent = incremento.toFixed(2) + ' €';
+            document.getElementById('cTotal').textContent = total.toFixed(2) + ' €';
+            document.getElementById('cKm').textContent = km > 0 ? (total / km).toFixed(3) + ' €/km' : '—';
+        }
+        function anadirTramo() {
+            const nodo = document.getElementById('tramoPlantilla').content.cloneNode(true);
+            document.getElementById('tramos').appendChild(nodo);
+            recalc();
+        }
+        function quitarTramo(btn) {
+            const rows = document.querySelectorAll('#tramos .tramo-row');
+            if (rows.length <= 1) {
+                btn.closest('.tramo-row').querySelector('.tramo-ruta').value = '';
+                btn.closest('.tramo-row').querySelector('.tramo-viajes').value = '';
+                recalc({ target: btn });
+                return;
+            }
+            btn.closest('.tramo-row').remove();
+            recalc({ target: btn });
+        }
+        document.getElementById('ingresoForm').addEventListener('input', recalc);
+        document.getElementById('ingresoForm').addEventListener('change', recalc);
+        recalc();
+    </script>
+</body>
+</html>

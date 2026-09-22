@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gráfica - Análisis {{ titulo_periodo }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 28px 30px;
+            text-align: center;
+        }
+        .header h1 { margin: 0; font-size: 2.1em; font-weight: 300; }
+        .header p { margin: 8px 0 0 0; opacity: 0.92; }
+        .content { padding: 28px; }
+        .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+        .btn {
+            padding: 10px 18px; border: none; border-radius: 8px; font-weight: 600;
+            cursor: pointer; text-decoration: none; display: inline-block; color: white; background: #667eea;
+        }
+        .btn-secondary { background: #6c757d; }
+        .btn-primary { background: #667eea; }
+        .filters {
+            background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 12px;
+            padding: 18px; margin-bottom: 22px;
+        }
+        .filter-row {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 14px; align-items: end;
+        }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 600; color: #333; font-size: 0.9em; }
+        .form-group select { width: 100%; padding: 10px 12px; border: 2px solid #e1e5e9; border-radius: 6px; }
+        .kpis {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 12px;
+            margin-bottom: 22px;
+        }
+        .kpi {
+            background: #f8f9fa; border-radius: 12px; padding: 16px;
+            border: 1px solid #e9ecef;
+        }
+        .kpi .label { color: #666; font-size: 0.8em; margin-bottom: 6px; }
+        .kpi .value { font-size: 1.45em; font-weight: 700; color: #333; }
+        .kpi .hint { color: #888; font-size: 0.75em; margin-top: 4px; }
+        .kpi.ok .value { color: #2e7d32; }
+        .kpi.bad .value { color: #c62828; }
+        .kpi.gasoil .value { color: #e53935; }
+        .kpi.ingreso .value { color: #2e7d32; }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .grid-charts {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .card {
+            background: #fff; border: 1px solid #e9ecef; border-radius: 12px; padding: 18px;
+        }
+        .card h3 { margin: 0 0 6px 0; font-size: 1.05em; color: #333; }
+        .card p.sub { margin: 0 0 14px 0; color: #777; font-size: 0.85em; }
+        .chart-box { position: relative; height: 280px; }
+        .chart-box.tall { height: 320px; }
+        .empty {
+            text-align: center; padding: 50px 20px; color: #666;
+            background: #fafafa; border-radius: 12px;
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+        th, td { padding: 9px 8px; border-bottom: 1px solid #eee; text-align: right; white-space: nowrap; }
+        th { background: #f3f4f8; color: #444; }
+        th:first-child, td:first-child { text-align: left; }
+        .positive { color: #2e7d32; font-weight: 700; }
+        .negative { color: #c62828; font-weight: 700; }
+        .high { color: #c62828; font-weight: 700; }
+        .medium { color: #ef6c00; }
+        .low { color: #2e7d32; }
+        .table-wrap { overflow-x: auto; }
+        .leyenda-mini { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.8em; color: #555; margin-bottom: 8px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        @media (max-width: 900px) {
+            .grid-2, .grid-charts { grid-template-columns: 1fr; }
+            .chart-box, .chart-box.tall { height: 240px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Gráfica del mes</h1>
+            <p>{{ titulo_periodo }} · km, ingresos, gasoil y lo que queda por camión</p>
+        </div>
+        <div class="content">
+            <div class="actions">
+                <a href="{{ url_for('analisis', anio=anio, mes=mes, camion_id=camion_id) }}" class="btn btn-secondary">← Análisis</a>
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">Inicio</a>
+            </div>
+
+            <div class="filters">
+                <form method="get">
+                    <div class="filter-row">
+                        <div class="form-group">
+                            <label for="anio">Año</label>
+                            <select id="anio" name="anio">
+                                {% for a in años_disponibles %}
+                                <option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="mes">Mes</label>
+                            <select id="mes" name="mes">
+                                <option value="0" {% if mes == 0 %}selected{% endif %}>Todo el año</option>
+                                {% for num, nombre in meses.items() %}
+                                <option value="{{ num }}" {% if mes == num %}selected{% endif %}>{{ nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="camion_id">Camión</label>
+                            <select id="camion_id" name="camion_id">
+                                <option value="0">Todos los camiones</option>
+                                {% for camion in camiones %}
+                                <option value="{{ camion.id }}" {% if camion_id == camion.id %}selected{% endif %}>{{ camion.etiqueta() }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <button type="submit" class="btn btn-primary" style="width:100%;">Ver gráfica</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            {% if not camiones_serie and not meses_serie %}
+            <div class="empty">
+                <h3>No hay datos para este periodo</h3>
+                <p>Añade ingresos y gasoil en Análisis para ver la gráfica.</p>
+            </div>
+            {% else %}
+            <div class="kpis">
+                <div class="kpi">
+                    <div class="label">Km recorridos</div>
+                    <div class="value">{{ "{:,.0f}".format(totales.km).replace(",", ".") }}</div>
+                    <div class="hint">Suma de rutas × viajes</div>
+                </div>
+                <div class="kpi ingreso">
+                    <div class="label">Ingresos</div>
+                    <div class="value">{{ "{:,.0f}".format(totales.ingresos).replace(",", ".") }} €</div>
+                    <div class="hint">Incluye incremento combustible</div>
+                </div>
+                <div class="kpi gasoil">
+                    <div class="label">Gasto gasoil</div>
+                    <div class="value">{{ "{:,.0f}".format(totales.gasoil).replace(",", ".") }} €</div>
+                    <div class="hint">Neto (sin IVA − bonificación)</div>
+                </div>
+                <div class="kpi {% if totales.diferencia >= 0 %}ok{% else %}bad{% endif %}">
+                    <div class="label">Diferencia</div>
+                    <div class="value">{{ "{:,.0f}".format(totales.diferencia).replace(",", ".") }} €</div>
+                    <div class="hint">Ingresos − gasoil</div>
+                </div>
+                <div class="kpi">
+                    <div class="label">Consumo €/L</div>
+                    <div class="value">{% if totales.precio_l is not none %}{{ "%.3f"|format(totales.precio_l) }} €/L{% else %}—{% endif %}</div>
+                    <div class="hint">Precio medio echa</div>
+                </div>
+                <div class="kpi">
+                    <div class="label">Repercusión</div>
+                    <div class="value">{% if totales.incidencia is not none %}{{ "%.1f"|format(totales.incidencia) }}%{% else %}—{% endif %}</div>
+                    <div class="hint">Qué parte de lo cobrado se va en gasoil</div>
+                </div>
+                <div class="kpi ingreso">
+                    <div class="label">Cobrado / km</div>
+                    <div class="value">{% if totales.cobrado_km is not none %}{{ "%.3f"|format(totales.cobrado_km) }} €{% else %}—{% endif %}</div>
+                    <div class="hint">€ que entra por km</div>
+                </div>
+                <div class="kpi gasoil">
+                    <div class="label">Gastado / km</div>
+                    <div class="value">{% if totales.gasto_km is not none %}{{ "%.3f"|format(totales.gasto_km) }} €{% else %}—{% endif %}</div>
+                    <div class="hint">€ de gasoil por km</div>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <h3>De cada 100 € cobrados</h3>
+                    <p class="sub">Cuánto se come el gasoil y cuánto queda</p>
+                    <div class="chart-box"><canvas id="chartDonut"></canvas></div>
+                </div>
+                <div class="card">
+                    <h3>{% if mes %}Ingresos y gasoil por camión{% else %}Ingresos y gasoil por mes{% endif %}</h3>
+                    <p class="sub">Verde entra · rojo se va · así se ve quién deja más</p>
+                    <div class="leyenda-mini">
+                        <span><i class="dot" style="background:#43a047;"></i>Ingresos</span>
+                        <span><i class="dot" style="background:#e53935;"></i>Gasoil</span>
+                        <span><i class="dot" style="background:#1976d2;"></i>Diferencia</span>
+                    </div>
+                    <div class="chart-box tall"><canvas id="chartDinero"></canvas></div>
+                </div>
+            </div>
+
+            <div class="grid-charts">
+                <div class="card">
+                    <h3>€ por kilómetro</h3>
+                    <p class="sub">Lo cobrado frente a lo gastado en gasoil</p>
+                    <div class="chart-box"><canvas id="chartKm"></canvas></div>
+                </div>
+                <div class="card">
+                    <h3>Repercusión del gasoil</h3>
+                    <p class="sub">Porcentaje del ingreso que se va en combustible</p>
+                    <div class="chart-box"><canvas id="chartIncidencia"></canvas></div>
+                </div>
+            </div>
+
+            <div class="grid-charts">
+                <div class="card">
+                    <h3>Consumo €/L</h3>
+                    <p class="sub">Precio medio echa (neto ÷ litros)</p>
+                    <div class="chart-box"><canvas id="chartLitro"></canvas></div>
+                </div>
+                <div class="card">
+                    <h3>Kilómetros</h3>
+                    <p class="sub">Km realizados en el periodo</p>
+                    <div class="chart-box"><canvas id="chartKms"></canvas></div>
+                </div>
+            </div>
+
+            {% if mes and meses_serie %}
+            <div class="card" style="margin-bottom:16px;">
+                <h3>Evolución del año {{ anio }}</h3>
+                <p class="sub">Para ver si este mes está mejor o peor que el resto</p>
+                <div class="chart-box tall"><canvas id="chartEvolucion"></canvas></div>
+            </div>
+            {% endif %}
+
+            <div class="card">
+                <h3>Detalle</h3>
+                <p class="sub">Los mismos números de las gráficas, por si quieres comparar con precisión</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>{% if mes %}Camión{% else %}Mes{% endif %}</th>
+                                <th>Km</th>
+                                <th>Ingresos</th>
+                                <th>Gasoil</th>
+                                <th>Diferencia</th>
+                                <th>Repercusión</th>
+                                <th>€/L</th>
+                                <th>€/km cobrado</th>
+                                <th>€/km gastado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set filas_tabla = camiones_serie if camiones_serie else meses_serie %}
+                            {% for fila in filas_tabla %}
+                            <tr>
+                                <td><strong>{{ fila.nombre }}</strong></td>
+                                <td>{{ "%.0f"|format(fila.km) }}</td>
+                                <td>{{ "%.2f"|format(fila.ingresos) }} €</td>
+                                <td>{{ "%.2f"|format(fila.gasoil) }} €</td>
+                                <td class="{% if fila.diferencia >= 0 %}positive{% else %}negative{% endif %}">{{ "%.2f"|format(fila.diferencia) }} €</td>
+                                <td class="{% if fila.incidencia is not none and fila.incidencia > 40 %}high{% elif fila.incidencia is not none and fila.incidencia > 30 %}medium{% else %}low{% endif %}">
+                                    {% if fila.incidencia is not none %}{{ "%.1f"|format(fila.incidencia) }}%{% else %}—{% endif %}
+                                </td>
+                                <td>{% if fila.precio_l is not none %}{{ "%.3f"|format(fila.precio_l) }}{% else %}—{% endif %}</td>
+                                <td>{% if fila.cobrado_km is not none %}{{ "%.3f"|format(fila.cobrado_km) }}{% else %}—{% endif %}</td>
+                                <td>{% if fila.gasto_km is not none %}{{ "%.3f"|format(fila.gasto_km) }}{% else %}—{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <script>
+        const camiones = {{ camiones_serie|tojson }};
+        const meses = {{ meses_serie|tojson }};
+        const totales = {{ totales|tojson }};
+        const porMes = {{ mes|int }};
+        const serie = (camiones && camiones.length) ? camiones : meses;
+
+        function euro(v) {
+            if (v === null || v === undefined) return '—';
+            return Number(v).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+        }
+        const labels = serie.map(x => x.nombre);
+        const common = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }
+        };
+
+        if (totales && (totales.ingresos || totales.gasoil)) {
+            const gasoil = Math.max(0, totales.gasoil || 0);
+            const queda = Math.max(0, (totales.ingresos || 0) - gasoil);
+            new Chart(document.getElementById('chartDonut'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Se va en gasoil', 'Queda'],
+                    datasets: [{
+                        data: [gasoil, queda],
+                        backgroundColor: ['#e53935', '#43a047'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '62%',
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => ' ' + ctx.label + ': ' + euro(ctx.raw)
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        if (serie.length && document.getElementById('chartDinero')) {
+            new Chart(document.getElementById('chartDinero'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Ingresos', data: serie.map(x => x.ingresos), backgroundColor: '#43a047', borderRadius: 6, maxBarThickness: 70 },
+                        { label: 'Gasoil', data: serie.map(x => x.gasoil), backgroundColor: '#e53935', borderRadius: 6, maxBarThickness: 70 },
+                        { label: 'Diferencia', data: serie.map(x => x.diferencia), type: 'line', borderColor: '#1976d2', backgroundColor: '#1976d2', tension: 0.3, pointRadius: 4 }
+                    ]
+                },
+                options: {
+                    ...common,
+                    plugins: {
+                        legend: { display: true, position: 'bottom' },
+                        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + euro(ctx.raw) } }
+                    },
+                    scales: { y: { ticks: { callback: v => v.toLocaleString('es-ES') + ' €' } } }
+                }
+            });
+
+            new Chart(document.getElementById('chartKm'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Cobrado €/km', data: serie.map(x => x.cobrado_km), backgroundColor: '#00897b', borderRadius: 6 },
+                        { label: 'Gastado €/km', data: serie.map(x => x.gasto_km), backgroundColor: '#fb8c00', borderRadius: 6 }
+                    ]
+                },
+                options: {
+                    ...common,
+                    plugins: {
+                        legend: { display: true, position: 'bottom' },
+                        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + (ctx.raw == null ? '—' : Number(ctx.raw).toFixed(3) + ' €/km') } }
+                    },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            new Chart(document.getElementById('chartIncidencia'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Repercusión %',
+                        data: serie.map(x => x.incidencia),
+                        backgroundColor: serie.map(x => x.incidencia == null ? '#ccc' : x.incidencia > 40 ? '#e53935' : x.incidencia > 30 ? '#fb8c00' : '#43a047'),
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    ...common,
+                    indexAxis: 'y',
+                    plugins: {
+                        tooltip: { callbacks: { label: ctx => ctx.raw == null ? '—' : Number(ctx.raw).toFixed(1) + ' %' } }
+                    },
+                    scales: { x: { beginAtZero: true, ticks: { callback: v => v + '%' } } }
+                }
+            });
+
+            new Chart(document.getElementById('chartLitro'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: '€/L',
+                        data: serie.map(x => x.precio_l),
+                        backgroundColor: '#7e57c2',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    ...common,
+                    plugins: { tooltip: { callbacks: { label: ctx => ctx.raw == null ? '—' : Number(ctx.raw).toFixed(3) + ' €/L' } } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            new Chart(document.getElementById('chartKms'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Km',
+                        data: serie.map(x => x.km),
+                        backgroundColor: '#5c6bc0',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    ...common,
+                    plugins: { tooltip: { callbacks: { label: ctx => Number(ctx.raw).toLocaleString('es-ES') + ' km' } } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        if (porMes && meses.length && document.getElementById('chartEvolucion')) {
+            new Chart(document.getElementById('chartEvolucion'), {
+                type: 'bar',
+                data: {
+                    labels: meses.map(x => x.nombre),
+                    datasets: [
+                        { label: 'Ingresos', data: meses.map(x => x.ingresos), backgroundColor: '#43a047', borderRadius: 5 },
+                        { label: 'Gasoil', data: meses.map(x => x.gasoil), backgroundColor: '#e53935', borderRadius: 5 },
+                        { label: 'Diferencia', data: meses.map(x => x.diferencia), type: 'line', borderColor: '#1976d2', tension: 0.3, pointRadius: 4 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true, position: 'bottom' },
+                        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + euro(ctx.raw) } }
+                    },
+                    scales: { y: { ticks: { callback: v => v.toLocaleString('es-ES') + ' €' } } }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camiones - Análisis</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 28px;
+            text-align: center;
+        }
+        .header h1 { margin: 0; font-weight: 300; }
+        .content { padding: 28px; }
+        .flash-message { padding: 12px 18px; border-radius: 8px; margin-bottom: 12px; }
+        .flash-success { background: #d4edda; color: #155724; }
+        .flash-error { background: #f8d7da; color: #721c24; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        .btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            color: white;
+            background: #667eea;
+            display: inline-block;
+        }
+        .btn-success { background: #43a047; }
+        .btn-secondary { background: #6c757d; }
+        .btn-danger { background: #e53935; padding: 6px 10px; font-size: 0.85em; }
+        .btn-small { padding: 6px 10px; font-size: 0.85em; }
+        .card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 18px;
+            margin-bottom: 22px;
+            border: 1px solid #e9ecef;
+        }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9em; }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px 8px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #f3f4f8; }
+        .muted { color: #888; }
+        .inactive { opacity: 0.55; }
+        @media (max-width: 768px) {
+            .form-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Camiones</h1>
+        </div>
+        <div class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="actions">
+                <a href="{{ url_for('analisis') }}" class="btn btn-secondary">← Volver al análisis</a>
+                <form action="{{ url_for('importar_camiones_xpo') }}" method="post" style="display:inline;">
+                    <button type="submit" class="btn">Importar matrículas de Control XPO</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <form method="post">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="matricula">Matrícula</label>
+                            <input type="text" id="matricula" name="matricula" required maxlength="20" placeholder="1234ABC" style="text-transform:uppercase;">
+                        </div>
+                        <div class="form-group">
+                            <label for="alias">Alias (opcional)</label>
+                            <input type="text" id="alias" name="alias" maxlength="100" placeholder="Camión 1">
+                        </div>
+                        <button type="submit" class="btn btn-success">Añadir camión</button>
+                    </div>
+                </form>
+            </div>
+
+            {% if camiones %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Camión</th>
+                        <th>Registros</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for camion in camiones %}
+                    <tr class="{% if not camion.activo %}inactive{% endif %}">
+                        <td>
+                            <form action="{{ url_for('editar_camion_analisis', id=camion.id) }}" method="post" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                                <input type="text" name="matricula" value="{{ camion.matricula }}" required maxlength="20" style="width:140px; text-transform:uppercase;">
+                                <input type="text" name="alias" value="{{ camion.alias or '' }}" maxlength="100" placeholder="Alias" style="width:160px;">
+                                <label class="muted"><input type="checkbox" name="activo" {% if camion.activo %}checked{% endif %}> Activo</label>
+                                <button type="submit" class="btn btn-small">Guardar</button>
+                            </form>
+                        </td>
+                        <td>{{ (camion.ingresos|length) + (camion.repostajes|length) }}</td>
+                        <td>
+                            <form action="{{ url_for('borrar_camion_analisis', id=camion.id) }}" method="post" onsubmit="return confirm('¿Borrar este camión?');">
+                                <button type="submit" class="btn btn-danger">Borrar</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="muted">Todavía no hay camiones. Añade uno o impórtalos desde Control XPO.</p>
+            {% endif %}
+        </div>
+    </div>
+    <script>
+        document.getElementById('matricula').addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+        });
+    </script>
+</body>
+</html>
