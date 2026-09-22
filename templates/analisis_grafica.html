@@ -169,7 +169,7 @@
                 <div class="kpi ingreso">
                     <div class="label">Ingresos</div>
                     <div class="value">{{ "{:,.0f}".format(totales.ingresos).replace(",", ".") }} €</div>
-                    <div class="hint">Incluye incremento combustible</div>
+                    <div class="hint">Rutas, extras, incremento, bonus y HVO</div>
                 </div>
                 <div class="kpi gasoil">
                     <div class="label">Gasto gasoil</div>
@@ -265,6 +265,8 @@
                                 <th>{% if mes %}Camión{% else %}Mes{% endif %}</th>
                                 <th>Km</th>
                                 <th>Ingresos</th>
+                                <th>Bonus</th>
+                                <th>HVO</th>
                                 <th>Gasoil</th>
                                 <th>Diferencia</th>
                                 <th>Repercusión</th>
@@ -274,12 +276,14 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% set filas_tabla = camiones_serie if camiones_serie else meses_serie %}
+                            {% set filas_tabla = camiones_serie if mes else meses_serie %}
                             {% for fila in filas_tabla %}
                             <tr>
                                 <td><strong>{{ fila.nombre }}</strong></td>
                                 <td>{{ "%.0f"|format(fila.km) }}</td>
                                 <td>{{ "%.2f"|format(fila.ingresos) }} €</td>
+                                <td class="{% if (fila.bonus or 0) < 0 %}negative{% elif (fila.bonus or 0) > 0 %}positive{% endif %}">{{ "%.2f"|format(fila.bonus or 0) }} €</td>
+                                <td class="{% if (fila.hvo or 0) < 0 %}negative{% elif (fila.hvo or 0) > 0 %}positive{% endif %}">{{ "%.2f"|format(fila.hvo or 0) }} €</td>
                                 <td>{{ "%.2f"|format(fila.gasoil) }} €</td>
                                 <td class="{% if fila.diferencia >= 0 %}positive{% else %}negative{% endif %}">{{ "%.2f"|format(fila.diferencia) }} €</td>
                                 <td class="{% if fila.incidencia is not none and fila.incidencia > 40 %}high{% elif fila.incidencia is not none and fila.incidencia > 30 %}medium{% else %}low{% endif %}">
@@ -302,7 +306,7 @@
         const meses = {{ meses_serie|tojson }};
         const totales = {{ totales|tojson }};
         const porMes = {{ mes|int }};
-        const serie = (camiones && camiones.length) ? camiones : meses;
+        const serie = (porMes && camiones && camiones.length) ? camiones : meses;
 
         function euro(v) {
             if (v === null || v === undefined) return '—';

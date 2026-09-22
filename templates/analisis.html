@@ -192,7 +192,7 @@
                 </form>
             </div>
 
-            {% if filas or filas_ingresos or filas_gasoil %}
+            {% if filas or filas_ingresos or filas_gasoil or repercusiones %}
             <div class="kpis">
                 <div class="kpi">
                     <div class="label">Incidencia del gasoil</div>
@@ -207,7 +207,7 @@
                 <div class="kpi">
                     <div class="label">Cobrado por km</div>
                     <div class="value">{% if totales.cobrado_km is not none %}{{ "%.3f"|format(totales.cobrado_km) }} €/km{% else %}—{% endif %}</div>
-                    <div class="hint">Ingresos + incremento ÷ km</div>
+                    <div class="hint">Ingresos + incremento + bonus + HVO ÷ km</div>
                 </div>
                 <div class="kpi">
                     <div class="label">Desviación vs oficial</div>
@@ -219,6 +219,58 @@
                     </div>
                 </div>
             </div>
+
+            <h3>Repercusión del bonus y el HVO</h3>
+            {% if repercusiones %}
+            <p class="muted">Se guarda un importe por mes para toda la flota. La parte de cada camión es importe × (sus km ÷ km de todos) y solo entra en el mes filtrado. <a href="{{ url_for('repartos_analisis', anio=anio, mes=mes) }}">Cambiar importes</a></p>
+            {% for grupo in repercusiones %}
+            <div class="table-wrap">
+                <p>
+                    <strong>{{ grupo.mes_nombre }}</strong>
+                    · flota {{ "%.0f"|format(grupo.km_total) }} km
+                    · bonus {{ "%.2f"|format(grupo.bonus_mes) }} €
+                    · HVO {{ "%.2f"|format(grupo.hvo_mes) }} €
+                </p>
+                {% if grupo.lineas %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Camión</th>
+                            <th>Km</th>
+                            <th>% flota</th>
+                            <th>Bonus</th>
+                            <th>HVO</th>
+                            <th>Repercusión</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for linea in grupo.lineas %}
+                        <tr>
+                            <td>{% if linea.camion %}{{ linea.camion.etiqueta() }}{% else %}—{% endif %}</td>
+                            <td>{{ "%.0f"|format(linea.km) }}</td>
+                            <td>{{ "%.1f"|format(linea.pct) }} %</td>
+                            <td class="{% if linea.bonus_calidad < 0 %}negative{% elif linea.bonus_calidad > 0 %}positive{% endif %}">{{ "%.2f"|format(linea.bonus_calidad) }} €</td>
+                            <td class="{% if linea.suplemento_hvo < 0 %}negative{% elif linea.suplemento_hvo > 0 %}positive{% endif %}">{{ "%.2f"|format(linea.suplemento_hvo) }} €</td>
+                            <td class="{% if linea.total < 0 %}negative{% elif linea.total > 0 %}positive{% endif %}">{{ "%.2f"|format(linea.total) }} €</td>
+                        </tr>
+                        {% endfor %}
+                        <tr class="totals-row">
+                            <td>En este filtro</td>
+                            <td colspan="2"></td>
+                            <td>{{ "%.2f"|format(grupo.bonus_repercutido) }} €</td>
+                            <td>{{ "%.2f"|format(grupo.hvo_repercutido) }} €</td>
+                            <td>{{ "%.2f"|format(grupo.bonus_repercutido + grupo.hvo_repercutido) }} €</td>
+                        </tr>
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="muted">Este mes tiene importe, pero aún no hay km en los ingresos: no se puede repartir.</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+            {% else %}
+            <p class="muted">No hay bonus ni HVO en este filtro. <a href="{{ url_for('repartos_analisis', anio=anio, mes=mes) }}">Añadir</a></p>
+            {% endif %}
 
             <h3>Resumen por camión</h3>
             <div class="table-wrap">
@@ -315,35 +367,6 @@
                 </table>
                 {% else %}
                 <p class="muted">No hay ingresos en este filtro. <a href="{{ url_for('nuevo_ingreso_analisis', anio=anio, mes=mes, camion_id=camion_id) }}">Añadir ingresos</a></p>
-                {% endif %}
-            </div>
-
-            <h3>Bonus calidad y suplemento HVO</h3>
-            <div class="table-wrap">
-                {% if repartos %}
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Mes</th>
-                            <th>Concepto</th>
-                            <th>Importe del mes</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for r in repartos %}
-                        <tr>
-                            <td>{{ meses[r.mes] }}</td>
-                            <td>{% if r.tipo == 'bonus_calidad' %}Bonus calidad{% else %}Suplemento HVO{% endif %}</td>
-                            <td class="{% if r.importe < 0 %}negative{% elif r.importe > 0 %}positive{% endif %}">{{ "%.2f"|format(r.importe) }} €</td>
-                            <td><a href="{{ url_for('repartos_analisis', anio=anio, mes=r.mes) }}" class="btn btn-small">Editar</a></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                <p class="muted">El importe se reparte entre los camiones a razón de los km de cada uno. <a href="{{ url_for('repartos_analisis', anio=anio, mes=mes) }}">Añadir o cambiar</a></p>
-                {% else %}
-                <p class="muted">No hay bonus ni HVO en este filtro. <a href="{{ url_for('repartos_analisis', anio=anio, mes=mes) }}">Añadir</a></p>
                 {% endif %}
             </div>
 

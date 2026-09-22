@@ -3406,9 +3406,12 @@ def _km_flota_por_mes(anio):
         datos['total'] += km
     return por_mes
 
-def _aplicar_repartos(por_clave, anio, camion_id=0, camiones_por_id=None):
+def _aplicar_repartos(por_clave, anio, camion_id=0, camiones_por_id=None, mes=0):
     """Reparte bonus calidad y suplemento HVO del mes a razón de los km de cada camión."""
-    repartos = RegistroReparto.query.filter_by(anio=anio).all()
+    consulta = RegistroReparto.query.filter_by(anio=anio)
+    if mes:
+        consulta = consulta.filter_by(mes=mes)
+    repartos = consulta.all()
     if not repartos:
         return
     km_flota = _km_flota_por_mes(anio)
@@ -3443,6 +3446,60 @@ def _aplicar_repartos(por_clave, anio, camion_id=0, camiones_por_id=None):
                     'ingreso': None,
                 }
             por_clave[key]['totales'][campo] = (por_clave[key]['totales'].get(campo) or 0) + share
+
+def _listar_repercusiones(por_clave, anio, mes=0):
+    """Parte de bonus y HVO que corresponde a cada camión, mes a mes, dentro del filtro."""
+    km_flota = _km_flota_por_mes(anio)
+    consulta = RegistroReparto.query.filter_by(anio=anio)
+    if mes:
+        consulta = consulta.filter_by(mes=mes)
+    importes = {}
+    for reparto in consulta.all():
+        slot = importes.setdefault(reparto.mes, {'bonus_calidad': 0.0, 'suplemento_hvo': 0.0})
+        if reparto.tipo in slot:
+            slot[reparto.tipo] = reparto.importe or 0
+
+    lineas_por_mes = {}
+    for (cid, mes_val), bucket in por_clave.items():
+        if mes and mes_val != mes:
+            continue
+        bonus = bucket['totales'].get('bonus_calidad') or 0
+        hvo = bucket['totales'].get('suplemento_hvo') or 0
+        if not bonus and not hvo:
+            continue
+        datos = km_flota.get(mes_val) or {}
+        km_total = datos.get('total') or 0
+        km = (datos.get('por_camion') or {}).get(cid, 0) or 0
+        lineas_por_mes.setdefault(mes_val, []).append({
+            'camion': bucket.get('camion'),
+            'km': km,
+            'pct': (km / km_total * 100) if km_total else 0,
+            'bonus_calidad': bonus,
+            'suplemento_hvo': hvo,
+            'total': bonus + hvo,
+        })
+
+    grupos = []
+    for mes_val in sorted(set(importes) | set(lineas_por_mes)):
+        imp = importes.get(mes_val) or {'bonus_calidad': 0.0, 'suplemento_hvo': 0.0}
+        if not (imp['bonus_calidad'] or imp['suplemento_hvo'] or lineas_por_mes.get(mes_val)):
+            continue
+        lineas = sorted(
+            lineas_por_mes.get(mes_val, []),
+            key=lambda x: x['camion'].matricula if x['camion'] else '',
+        )
+        datos = km_flota.get(mes_val) or {}
+        grupos.append({
+            'mes': mes_val,
+            'mes_nombre': MESES_NOMBRE.get(mes_val, mes_val),
+            'bonus_mes': imp['bonus_calidad'],
+            'hvo_mes': imp['suplemento_hvo'],
+            'km_total': datos.get('total') or 0,
+            'lineas': lineas,
+            'bonus_repercutido': sum(linea['bonus_calidad'] for linea in lineas),
+            'hvo_repercutido': sum(linea['suplemento_hvo'] for linea in lineas),
+        })
+    return grupos
 
 # ==================== ANÁLISIS DE CAMIONES / GASOIL ====================
 
@@ -3500,7 +3557,8 @@ def _resumen_analisis(anio, mes=0, camion_id=0):
             bucket['totales']['litros_con_oficial'] += g.litros or 0
             bucket['totales']['coste_oficial'] += (g.litros or 0) * precios_oficiales[g.mes]
 
-    _aplicar_repartos(por_clave, anio, camion_id, camiones_por_id)
+    _aplicar_repartos(por_clave, anio, camion_id, camiones_por_id, mes)
+    repercusiones = _listar_repercusiones(por_clave, anio, mes)
 
     filas = []
     totales = dict(TOTALES_VACIOS)
@@ -3573,6 +3631,7 @@ def _resumen_analisis(anio, mes=0, camion_id=0):
         'años_disponibles': años_disponibles,
         'precios_oficiales': precios_oficiales,
         'repartos': RegistroReparto.query.filter_by(anio=anio).order_by(RegistroReparto.mes, RegistroReparto.tipo).all() if not mes else RegistroReparto.query.filter_by(anio=anio, mes=mes).order_by(RegistroReparto.tipo).all(),
+        'repercusiones': repercusiones,
     }
 
 def _punto_grafica(nombre, metricas):
@@ -3589,6 +3648,8 @@ def _punto_grafica(nombre, metricas):
         'cobrado_km': None if metricas.get('cobrado_km') is None else round(metricas['cobrado_km'], 3),
         'gasto_km': None if metricas.get('gasoil_km') is None else round(metricas['gasoil_km'], 3),
         'litros': round(metricas.get('litros') or 0, 1),
+        'bonus': round(metricas.get('bonus_calidad') or 0, 2),
+        'hvo': round(metricas.get('suplemento_hvo') or 0, 2),
     }
 
 @app.route('/analisis')
@@ -3612,6 +3673,7 @@ def analisis():
         años_disponibles=datos['años_disponibles'],
         precios_oficiales=datos['precios_oficiales'],
         repartos=datos['repartos'],
+        repercusiones=datos['repercusiones'],
     )
 
 @app.route('/analisis/grafica')
