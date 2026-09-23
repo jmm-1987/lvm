@@ -67,7 +67,7 @@
     <div class="container">
         <div class="header">
             <h1>Bonus calidad y suplemento HVO</h1>
-            <p>Se graban una vez al mes y se reparte el importe (positivo o negativo) según los km de cada camión</p>
+            <p>Se graban una vez al mes y se reparte el importe (positivo o negativo) según los km SEUR de cada camión</p>
         </div>
         <div class="content">
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -95,7 +95,7 @@
 
             <p class="hint">
                 Pon el total del mes. Si es negativo se trata como gasto. Cada camión recibe
-                <strong>total × (sus km ÷ km de todos)</strong>. Primero introduce los km en ingresos; si aún no hay km, el importe se quedará pendiente hasta que los haya.
+                <strong>total × (sus km SEUR ÷ km SEUR de todos)</strong>. Los kilómetros de ingresos XPO no entran en este reparto.
             </p>
 
             <form method="post" id="repartoForm">
@@ -105,7 +105,7 @@
                     <thead>
                         <tr>
                             <th>Mes</th>
-                            <th class="num">Km flota</th>
+                            <th class="num">Km SEUR</th>
                             <th>Bonus calidad €</th>
                             <th>Suplemento HVO €</th>
                         </tr>
@@ -142,7 +142,7 @@
                         <thead>
                             <tr>
                                 <th>Camión</th>
-                                <th class="num">Km</th>
+                                <th class="num">Km SEUR</th>
                                 <th class="num">%</th>
                                 <th class="num">Bonus calidad</th>
                                 <th class="num">Suplemento HVO</th>
@@ -183,7 +183,7 @@
             if (!datos || !datos.camiones || !datos.camiones.length) {
                 tabla.style.display = 'none';
                 vacio.style.display = 'block';
-                vacio.textContent = 'Este mes aún no hay km en los ingresos. Cuando los pongas, el importe se repartirá solo.';
+                vacio.textContent = 'Este mes aún no hay km de SEUR. Los de XPO no reparten bonus ni HVO.';
                 return;
             }
             vacio.style.display = 'none';

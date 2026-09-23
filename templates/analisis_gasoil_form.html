@@ -89,6 +89,8 @@
                 </fieldset>
                 <fieldset>
                     <legend>Importes</legend>
+                    <p class="help" style="margin-top:0;">Escribe el importe con IVA o el sin IVA. El otro se calcula solo.</p>
+                    <input type="hidden" id="base_iva" name="base_iva" value="con">
                     <div class="form-row-4">
                         <div class="form-group">
                             <label for="gasto_con_iva">Gasoil con IVA €</label>
@@ -97,8 +99,8 @@
                         </div>
                         <div class="form-group">
                             <label for="gasto_sin_iva">Gasoil sin IVA €</label>
-                            <input type="text" id="gasto_sin_iva" readonly class="calc-field"
-                                   value="{{ '%.2f'|format(registro.gasto_sin_iva) if registro and registro.gasto_sin_iva else '' }}">
+                            <input type="text" inputmode="decimal" id="gasto_sin_iva" name="gasto_sin_iva"
+                                   value="{{ '%.2f'|format(registro.gasto_sin_iva) if registro and registro.gasto_sin_iva else '' }}" placeholder="0,00">
                             <select id="iva_porcentaje" name="iva_porcentaje" class="iva-select">
                                 {% set iva_sel = (registro.iva_porcentaje if registro and registro.iva_porcentaje is not none else 21)|round|int %}
                                 {% for iva in tipos_iva %}
@@ -151,36 +153,54 @@
         </div>
     </div>
     <script>
-        const IVA = 1 + {{ iva_gasoil|default(0.21) }};
+        let baseIva = 'con';
         function n(id) {
             const el = document.getElementById(id);
             if (!el) return 0;
             let t = String(el.value).replace(/\s/g, '');
+            if (!t) return 0;
             if (t.indexOf(',') >= 0 && t.indexOf('.') >= 0) t = t.replace(/\./g, '').replace(',', '.');
             else t = t.replace(',', '.');
             const v = parseFloat(t);
             return isNaN(v) ? 0 : v;
         }
         function ivaFactor() {
-            const pct = n('iva_porcentaje');
-            return 1 + (pct / 100);
+            return 1 + (n('iva_porcentaje') / 100);
         }
-        function recalc() {
-            const conIva = n('gasto_con_iva');
+        function tieneTexto(id) {
+            return String(document.getElementById(id).value || '').trim() !== '';
+        }
+        function recalc(origen) {
+            const factor = ivaFactor();
             const bonif = n('bonificacion');
-            const sinIva = conIva / ivaFactor();
+            const conEl = document.getElementById('gasto_con_iva');
+            const sinEl = document.getElementById('gasto_sin_iva');
+            if (origen === 'iva') origen = baseIva;
+            if (origen === 'sin') {
+                baseIva = 'sin';
+                conEl.value = tieneTexto('gasto_sin_iva') ? (n('gasto_sin_iva') * factor).toFixed(2) : '';
+            } else if (origen === 'con') {
+                baseIva = 'con';
+                sinEl.value = tieneTexto('gasto_con_iva') ? (n('gasto_con_iva') / factor).toFixed(2) : '';
+            }
+            document.getElementById('base_iva').value = baseIva;
+            const conIva = n('gasto_con_iva');
+            const sinIva = n('gasto_sin_iva');
             const neto = sinIva - bonif;
             const litros = n('litros');
-            document.getElementById('gasto_sin_iva').value = (conIva || bonif) ? sinIva.toFixed(2) : '';
-            document.getElementById('gasto_neto').value = (conIva || bonif) ? neto.toFixed(2) : '';
-            document.getElementById('cSinIva').textContent = sinIva.toFixed(2) + ' €';
-            document.getElementById('cNeto').textContent = neto.toFixed(2) + ' €';
-            document.getElementById('cPrecioL').textContent = litros > 0 ? (neto / litros).toFixed(3) + ' €/L' : '—';
+            const hayImporte = tieneTexto('gasto_con_iva') || tieneTexto('gasto_sin_iva') || tieneTexto('bonificacion');
+            document.getElementById('gasto_neto').value = hayImporte ? neto.toFixed(2) : '';
+            document.getElementById('cSinIva').textContent = hayImporte ? sinIva.toFixed(2) + ' €' : '—';
+            document.getElementById('cNeto').textContent = hayImporte ? neto.toFixed(2) + ' €' : '—';
+            document.getElementById('cPrecioL').textContent = litros > 0 && hayImporte ? (neto / litros).toFixed(3) + ' €/L' : '—';
             document.getElementById('cPrecioLIva').textContent = litros > 0 && conIva ? (conIva / litros).toFixed(3) + ' €/L' : '—';
         }
-        document.querySelectorAll('#gasoilForm input, #gasoilForm select').forEach(el => {
-            el.addEventListener('input', recalc);
-            el.addEventListener('change', recalc);
+        document.getElementById('gasto_con_iva').addEventListener('input', () => recalc('con'));
+        document.getElementById('gasto_sin_iva').addEventListener('input', () => recalc('sin'));
+        document.getElementById('iva_porcentaje').addEventListener('change', () => recalc('iva'));
+        ['bonificacion', 'litros', 'gasto_addblue'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => recalc());
         });
         recalc();
     </script>

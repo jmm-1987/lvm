@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprobación cláusula - Análisis</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0; padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1040px; margin: 0 auto; background: white;
+            border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 28px; text-align: center;
+        }
+        .header h1 { margin: 0; font-weight: 300; }
+        .header p { margin: 8px 0 0 0; opacity: 0.9; }
+        .content { padding: 28px; }
+        .flash-message { padding: 12px 18px; border-radius: 8px; margin-bottom: 12px; }
+        .flash-success { background: #d4edda; color: #155724; }
+        .flash-error { background: #f8d7da; color: #721c24; }
+        .actions, .tabs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+        .btn {
+            padding: 10px 18px; border: none; border-radius: 8px; font-weight: 600;
+            cursor: pointer; text-decoration: none; color: white; background: #667eea; display: inline-block;
+        }
+        .btn-success { background: #43a047; }
+        .btn-secondary { background: #6c757d; }
+        .tab { background: #eceff1; color: #333; }
+        .tab.active { background: #ef6c00; color: white; }
+        .year-row { display: flex; gap: 12px; align-items: end; margin-bottom: 18px; flex-wrap: wrap; }
+        label { display: block; margin-bottom: 6px; font-weight: 600; }
+        select, input[type="text"], textarea {
+            padding: 10px 12px; border: 2px solid #e1e5e9; border-radius: 6px; font-size: 1em; width: 100%;
+        }
+        textarea { min-height: 110px; resize: vertical; font-family: inherit; }
+        .hint { color: #666; font-size: 0.9em; margin-bottom: 16px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .field { margin-bottom: 14px; }
+        .sin-iva { color: #555; font-size: 0.92em; margin-top: 6px; }
+        .card {
+            background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 12px;
+            padding: 16px; margin: 8px 0 18px 0;
+        }
+        .card h3 { margin: 0 0 8px 0; }
+        .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+        .kpi { background: white; border-radius: 10px; padding: 12px; border: 1px solid #e9ecef; }
+        .kpi .label { color: #666; font-size: 0.8em; }
+        .kpi .value { font-size: 1.25em; font-weight: 700; margin-top: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+        th, td { padding: 10px 8px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #f3f4f8; }
+        td.num, th.num { text-align: right; }
+        .positive { color: #2e7d32; font-weight: 700; }
+        .negative { color: #c62828; font-weight: 700; }
+        .muted { color: #888; }
+        .mes-activo { background: #fff8e1; }
+        .nota { white-space: normal; }
+        .nota a { color: #1565c0; }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Comprobación cláusula</h1>
+            <p>Cada mes se guarda aparte: SEUR con su cálculo y XPO con el suyo</p>
+        </div>
+        <div class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="actions">
+                <a href="{{ url_for('analisis', anio=anio, mes=mes) }}" class="btn btn-secondary">← Volver al análisis</a>
+            </div>
+
+            <div class="tabs">
+                <a class="btn tab {% if cliente == 'seur' %}active{% endif %}" href="{{ url_for('clausula_analisis', anio=anio, mes=mes, cliente='seur') }}">SEUR</a>
+                <a class="btn tab {% if cliente == 'xpo' %}active{% endif %}" href="{{ url_for('clausula_analisis', anio=anio, mes=mes, cliente='xpo') }}">XPO</a>
+            </div>
+
+            <form method="get" class="year-row">
+                <input type="hidden" name="cliente" value="{{ cliente }}">
+                <div>
+                    <label for="anio">Año</label>
+                    <select id="anio" name="anio" onchange="this.form.submit()">
+                        {% for a in años_disponibles %}
+                        <option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="mes">Mes</label>
+                    <select id="mes" name="mes" onchange="this.form.submit()">
+                        {% for num, nombre in meses.items() %}
+                        <option value="{{ num }}" {% if num == mes %}selected{% endif %}>{{ nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+
+            {% if cliente == 'xpo' %}
+            <div class="card">
+                <h3>XPO</h3>
+                <p class="hint" style="margin:0;">
+                    Los meses de XPO se guardan en registros distintos de los de SEUR.
+                    El cálculo de XPO es otro: en cuanto esté definida la fórmula, esta pestaña guardará su propio mes.
+                </p>
+            </div>
+            {% else %}
+            <p class="hint">
+                Los dos precios se introducen <strong>con IVA</strong>. Debajo se ve el mismo precio sin IVA ({{ iva_pct }} %), solo para consultarlo.
+                Por cada céntimo de diferencia se aplican <strong>0,0028 €</strong> por kilómetro SEUR:
+                coeficiente = (precio del mes − referencia) × {{ factor }} / 100, y el incremento es ese coeficiente × los km.
+            </p>
+
+            <form method="post" id="clausulaForm">
+                <input type="hidden" name="anio" value="{{ anio }}">
+                <input type="hidden" name="mes" value="{{ mes }}">
+                <input type="hidden" name="cliente" value="seur">
+                <div class="grid">
+                    <div class="field">
+                        <label for="precio_referencia">Precio de referencia €/L con IVA</label>
+                        <input type="text" inputmode="decimal" id="precio_referencia" name="precio_referencia"
+                               value="{{ precio_ref if precio_ref else '' }}" placeholder="0,000">
+                        <div class="sin-iva">Sin IVA: <strong id="refSinIva">{% if precio_ref %}{{ "%.3f"|format(precio_ref / (1 + iva_pct / 100)) }} €{% else %}—{% endif %}</strong></div>
+                        {% if propuesta and not actual %}
+                        <div class="hint" style="margin:6px 0 0 0;">
+                            Propuesto desde {{ meses[propuesta.mes] }} {{ propuesta.anio }}. Se guarda al pulsar el botón y puedes cambiarlo.
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="field">
+                        <label for="precio_mes">Precio de {{ meses[mes] }} €/L con IVA</label>
+                        <input type="text" inputmode="decimal" id="precio_mes" name="precio_mes"
+                               value="{{ precio_mes_valor if precio_mes_valor else '' }}" placeholder="0,000">
+                        <div class="sin-iva">Sin IVA: <strong id="mesSinIva">{% if precio_mes_valor %}{{ "%.3f"|format(precio_mes_valor / (1 + iva_pct / 100)) }} €{% else %}—{% endif %}</strong></div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="texto_referencia">Enlace y observaciones de la referencia</label>
+                    <textarea id="texto_referencia" name="texto_referencia" placeholder="Pega aquí el enlace del precio de referencia y las notas que hagan falta">{{ texto_referencia }}</textarea>
+                </div>
+                {% if texto_html %}
+                <div class="card nota">{{ texto_html }}</div>
+                {% endif %}
+                <button type="submit" class="btn btn-success">Guardar {{ meses[mes] }} {{ anio }}</button>
+            </form>
+
+            <div class="card">
+                <h3>Resultado {{ meses[mes] }} {{ anio }}</h3>
+                <div class="kpis">
+                    <div class="kpi">
+                        <div class="label">Diferencia con IVA</div>
+                        <div class="value {% if calculo and calculo.diferencia < 0 %}negative{% elif calculo and calculo.diferencia > 0 %}positive{% endif %}" id="difValor">{% if calculo %}{{ "%.3f"|format(calculo.diferencia) }} €{% else %}—{% endif %}</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="label">Céntimos</div>
+                        <div class="value {% if calculo and calculo.centimos < 0 %}negative{% elif calculo and calculo.centimos > 0 %}positive{% endif %}" id="centValor">{% if calculo %}{{ "%.2f"|format(calculo.centimos) }}{% else %}—{% endif %}</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="label">Coeficiente €/km</div>
+                        <div class="value {% if calculo and calculo.coeficiente < 0 %}negative{% elif calculo and calculo.coeficiente > 0 %}positive{% endif %}" id="coefValor">{% if calculo %}{{ "%.5f"|format(calculo.coeficiente) }} €{% else %}—{% endif %}</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="label">Km SEUR</div>
+                        <div class="value">{{ "%.0f"|format(km_total) }}</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="label">Incremento combustible</div>
+                        <div class="value {% if calculo and calculo.importe < 0 %}negative{% elif calculo and calculo.importe > 0 %}positive{% endif %}" id="importeValor">{% if calculo %}{{ "%.2f"|format(calculo.importe) }} €{% else %}—{% endif %}</div>
+                    </div>
+                </div>
+                {% if not km_total %}
+                <p class="muted">Este mes todavía no hay kilómetros de ingresos SEUR. El incremento saldrá cuando los haya.</p>
+                {% endif %}
+            </div>
+
+            {% if lineas_km %}
+            <h3>Por camión</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Camión</th>
+                        <th class="num">Km SEUR</th>
+                        <th class="num">Incremento</th>
+                    </tr>
+                </thead>
+                <tbody id="camionesBody">
+                    {% for linea in lineas_km %}
+                    <tr>
+                        <td>{{ linea.nombre }}</td>
+                        <td class="num">{{ "%.0f"|format(linea.km) }}</td>
+                        <td class="num {% if linea.importe is defined and linea.importe < 0 %}negative{% elif linea.importe is defined and linea.importe > 0 %}positive{% endif %}">
+                            {% if linea.importe is defined %}{{ "%.2f"|format(linea.importe) }} €{% else %}—{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+
+            <h3>Meses de {{ anio }}</h3>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mes</th>
+                            <th class="num">Referencia con IVA</th>
+                            <th class="num">Precio mes con IVA</th>
+                            <th class="num">Km SEUR</th>
+                            <th class="num">Incremento</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in historial %}
+                        <tr class="{% if item.mes == mes %}mes-activo{% endif %}">
+                            <td>{{ item.nombre }}</td>
+                            <td class="num">{% if item.registro %}{{ "%.3f"|format(item.registro.precio_referencia) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                            <td class="num">{% if item.registro %}{{ "%.3f"|format(item.registro.precio_mes) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                            <td class="num">{{ "%.0f"|format(item.km) }}</td>
+                            <td class="num {% if item.calculo and item.calculo.importe < 0 %}negative{% elif item.calculo and item.calculo.importe > 0 %}positive{% endif %}">
+                                {% if item.calculo %}{{ "%.2f"|format(item.calculo.importe) }} €{% else %}<span class="muted">—</span>{% endif %}
+                            </td>
+                            <td><a href="{{ url_for('clausula_analisis', anio=anio, mes=item.mes, cliente='seur') }}">Abrir</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% if cliente == 'seur' %}
+    <script>
+        const IVA = {{ (iva_pct / 100)|tojson }};
+        const FACTOR = {{ factor|tojson }};
+        const KM = {{ km_total|tojson }};
+        const camiones = {{ lineas_km|tojson }};
+
+        function parseNum(valor) {
+            let t = String(valor || '').trim().replace(/\s/g, '');
+            if (!t) return null;
+            if (t.indexOf(',') >= 0 && t.indexOf('.') >= 0) t = t.replace(/\./g, '').replace(',', '.');
+            else t = t.replace(',', '.');
+            const v = parseFloat(t);
+            return isNaN(v) ? null : v;
+        }
+        function euro(v, dec) {
+            return v.toLocaleString('es-ES', { minimumFractionDigits: dec, maximumFractionDigits: dec }) + ' €';
+        }
+        function clase(v) {
+            return v < 0 ? 'negative' : (v > 0 ? 'positive' : '');
+        }
+        function pintar() {
+            const ref = parseNum(document.getElementById('precio_referencia').value);
+            const mes = parseNum(document.getElementById('precio_mes').value);
+            document.getElementById('refSinIva').textContent = ref ? euro(ref / (1 + IVA), 3) : '—';
+            document.getElementById('mesSinIva').textContent = mes ? euro(mes / (1 + IVA), 3) : '—';
+            const dif = document.getElementById('difValor');
+            const cent = document.getElementById('centValor');
+            const coef = document.getElementById('coefValor');
+            const importe = document.getElementById('importeValor');
+            if (ref === null || mes === null) {
+                dif.textContent = cent.textContent = coef.textContent = importe.textContent = '—';
+                return;
+            }
+            const diferencia = mes - ref;
+            const coeficiente = diferencia * FACTOR / 100;
+            const total = coeficiente * KM;
+            dif.textContent = euro(diferencia, 3);
+            dif.className = 'value ' + clase(diferencia);
+            cent.textContent = (diferencia * 100).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            cent.className = 'value ' + clase(diferencia);
+            coef.textContent = euro(coeficiente, 5);
+            coef.className = 'value ' + clase(coeficiente);
+            importe.textContent = euro(total, 2);
+            importe.className = 'value ' + clase(total);
+            const body = document.getElementById('camionesBody');
+            if (!body || !KM) return;
+            let asignado = 0;
+            let html = '';
+            camiones.forEach((c, i) => {
+                let parte;
+                if (i === camiones.length - 1) parte = total - asignado;
+                else {
+                    parte = Math.round(total * c.km / KM * 100) / 100;
+                    asignado += parte;
+                }
+                html += '<tr><td>' + c.nombre + '</td><td class="num">'
+                    + Math.round(c.km).toLocaleString('es-ES') + '</td><td class="num ' + clase(parte) + '">'
+                    + euro(parte, 2) + '</td></tr>';
+            });
+            body.innerHTML = html;
+        }
+        document.getElementById('clausulaForm').addEventListener('input', pintar);
+        pintar();
+    </script>
+    {% endif %}
+</body>
+</html>

@@ -123,12 +123,13 @@ class PrecioGasoilOficial(db.Model):
     precio = db.Column(db.Float, nullable=False)
     __table_args__ = (db.UniqueConstraint('anio', 'mes', name='uq_precio_gasoil_oficial_mes'),)
 
-# Registro mensual de ingresos por camión (km, facturación e incremento)
+# Ingresos por camión y mes. Puede haber varios (SEUR y XPO, u otros trabajos).
 class RegistroIngreso(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     camion_id = db.Column(db.Integer, db.ForeignKey('camion.id'), nullable=False)
     anio = db.Column(db.Integer, nullable=False)
     mes = db.Column(db.Integer, nullable=False)
+    cliente = db.Column(db.String(10), nullable=False, default='seur', server_default='seur')
     km_realizados = db.Column(db.Float, nullable=False, default=0)
     ingreso_ruta = db.Column(db.Float, nullable=False, default=0)
     ingreso_chofer_adicional = db.Column(db.Float, nullable=False, default=0)
@@ -136,7 +137,13 @@ class RegistroIngreso(db.Model):
     ingreso_autopista = db.Column(db.Float, nullable=False, default=0)
     incremento_combustible = db.Column(db.Float, nullable=False, default=0)
     observaciones = db.Column(db.String(255), nullable=True)
-    __table_args__ = (db.UniqueConstraint('camion_id', 'anio', 'mes', name='uq_registro_ingreso_camion_mes'),)
+
+    def cliente_etiqueta(self):
+        return 'XPO' if (self.cliente or '').strip().lower() == 'xpo' else 'SEUR'
+
+    def cuenta_para_reparto(self):
+        """Bonus y HVO solo se reparten con los km de los ingresos SEUR."""
+        return (self.cliente or '').strip().lower() != 'xpo'
 
 # Catálogo de rutas con km por viaje
 class Ruta(db.Model):
@@ -202,6 +209,16 @@ Camion.repostajes = db.relationship('RegistroGasoil', backref='camion', cascade=
 RegistroIngreso.tramos = db.relationship('RegistroIngresoTramo', backref='ingreso', cascade='all, delete-orphan')
 Ruta.tramos = db.relationship('RegistroIngresoTramo', backref='ruta')
 
+# Cláusula de gasoil SEUR: un registro por mes (precios con IVA)
+class ClausulaSeur(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    precio_referencia = db.Column(db.Float, nullable=False, default=0)
+    texto_referencia = db.Column(db.Text, nullable=True)
+    precio_mes = db.Column(db.Float, nullable=False, default=0)
+    __table_args__ = (db.UniqueConstraint('anio', 'mes', name='uq_clausula_seur_anio_mes'),)
+
 # Bonus calidad y suplemento HVO: un importe al mes, se reparte por km
 class RegistroReparto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -225,6 +242,13 @@ TIPOS_REPARTO = [
     ('bonus_calidad', 'Bonus calidad'),
     ('suplemento_hvo', 'Suplemento HVO'),
 ]
+CLIENTES_INGRESO = [
+    ('seur', 'SEUR'),
+    ('xpo', 'XPO'),
+]
+# Por cada euro de diferencia con IVA, el recargo SEUR es 0,28 €/km.
+# Equivale a 0,0028 €/km por cada céntimo: (diferencia) × 28 / 100.
+CLAUSULA_SEUR_FACTOR = 28
 _esquema_analisis_ok = False
 
 # Eliminar el modelo Usuario y la tabla de usuarios
@@ -2384,19 +2408,34 @@ def parsear_float_form(valor, por_defecto=0.0):
     except (TypeError, ValueError):
         return por_defecto
 
+def _factor_iva_gasoil(iva_porcentaje):
+    if iva_porcentaje is None:
+        return 1 + IVA_GASOIL
+    try:
+        porcentaje = float(iva_porcentaje)
+    except (TypeError, ValueError):
+        porcentaje = IVA_GASOIL * 100
+    if porcentaje < 0:
+        porcentaje = IVA_GASOIL * 100
+    return 1 + (porcentaje / 100.0)
+
 def calcular_gasoil_desglose(con_iva, bonificacion=0.0, iva_porcentaje=None):
     """A partir del gasoil con IVA, obtiene sin IVA y el neto tras bonificación."""
     con_iva = con_iva or 0.0
     bonificacion = bonificacion or 0.0
-    if iva_porcentaje is None:
-        iva = IVA_GASOIL
-    else:
-        iva = (iva_porcentaje or 0) / 100.0
-        if iva < 0:
-            iva = IVA_GASOIL
-    sin_iva = round(con_iva / (1 + iva), 2) if (1 + iva) else con_iva
+    factor = _factor_iva_gasoil(iva_porcentaje)
+    sin_iva = round(con_iva / factor, 2) if factor else round(con_iva, 2)
     neto = round(sin_iva - bonificacion, 2)
     return sin_iva, neto
+
+def calcular_gasoil_desde_sin_iva(sin_iva, bonificacion=0.0, iva_porcentaje=None):
+    """A partir del gasoil sin IVA, obtiene el con IVA y el neto tras bonificación."""
+    sin_iva = round(sin_iva or 0.0, 2)
+    bonificacion = bonificacion or 0.0
+    factor = _factor_iva_gasoil(iva_porcentaje)
+    con_iva = round(sin_iva * factor, 2)
+    neto = round(sin_iva - bonificacion, 2)
+    return con_iva, sin_iva, neto
 
 def asegurar_esquema_analisis():
     """Crea tablas nuevas y migra registros mixtos antiguos si los hay."""
@@ -2413,12 +2452,110 @@ def asegurar_esquema_analisis():
 
 def _asegurar_columnas_analisis():
     inspector = inspect(db.engine)
-    if 'registro_gasoil' not in inspector.get_table_names():
+    tablas = set(inspector.get_table_names())
+    if 'registro_gasoil' in tablas:
+        columnas = {c['name'] for c in inspector.get_columns('registro_gasoil')}
+        if 'iva_porcentaje' not in columnas:
+            db.session.execute(text('ALTER TABLE registro_gasoil ADD COLUMN iva_porcentaje FLOAT DEFAULT 21'))
+            db.session.commit()
+    if 'registro_ingreso' in tablas:
+        _migrar_ingresos_varios_por_mes()
+
+def _ingreso_tiene_unico_mensual():
+    inspector = inspect(db.engine)
+    for unico in inspector.get_unique_constraints('registro_ingreso'):
+        if set(unico.get('column_names') or []) == {'camion_id', 'anio', 'mes'}:
+            return True
+    if db.engine.dialect.name != 'sqlite':
+        return False
+    sql_tabla = db.session.execute(
+        text("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'registro_ingreso'")
+    ).scalar() or ''
+    return 'uq_registro_ingreso_camion_mes' in sql_tabla
+
+def _migrar_ingresos_varios_por_mes():
+    """Quita el límite de un ingreso por camión y mes, y marca el cliente (SEUR/XPO)."""
+    inspector = inspect(db.engine)
+    columnas = {c['name'] for c in inspector.get_columns('registro_ingreso')}
+    tiene_unico = _ingreso_tiene_unico_mensual()
+    if 'cliente' in columnas and not tiene_unico:
         return
-    columnas = {c['name'] for c in inspector.get_columns('registro_gasoil')}
-    if 'iva_porcentaje' not in columnas:
-        db.session.execute(text('ALTER TABLE registro_gasoil ADD COLUMN iva_porcentaje FLOAT DEFAULT 21'))
-        db.session.commit()
+    if db.engine.dialect.name == 'sqlite' and tiene_unico:
+        _reconstruir_ingresos_sqlite('cliente' in columnas)
+        db.session.remove()
+        db.engine.dispose()
+        return
+    if 'cliente' not in columnas:
+        db.session.execute(text(
+            "ALTER TABLE registro_ingreso ADD COLUMN cliente VARCHAR(10) NOT NULL DEFAULT 'seur'"
+        ))
+    if tiene_unico:
+        db.session.execute(text(
+            'ALTER TABLE registro_ingreso DROP CONSTRAINT uq_registro_ingreso_camion_mes'
+        ))
+    db.session.commit()
+
+def _reconstruir_ingresos_sqlite(ya_tiene_cliente):
+    """SQLite no permite quitar un UNIQUE de tabla: se reconstruye conservando los datos."""
+    conn = db.engine.raw_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute('PRAGMA foreign_keys=OFF')
+        cur.execute('BEGIN')
+        cur.execute('''
+            CREATE TABLE registro_ingreso_new (
+                id INTEGER NOT NULL,
+                camion_id INTEGER NOT NULL,
+                anio INTEGER NOT NULL,
+                mes INTEGER NOT NULL,
+                cliente VARCHAR(10) NOT NULL DEFAULT 'seur',
+                km_realizados FLOAT NOT NULL,
+                ingreso_ruta FLOAT NOT NULL,
+                ingreso_chofer_adicional FLOAT NOT NULL,
+                ingreso_extra FLOAT NOT NULL,
+                ingreso_autopista FLOAT NOT NULL,
+                incremento_combustible FLOAT NOT NULL,
+                observaciones VARCHAR(255),
+                PRIMARY KEY (id),
+                FOREIGN KEY(camion_id) REFERENCES camion (id)
+            )
+        ''')
+        if ya_tiene_cliente:
+            cur.execute('''
+                INSERT INTO registro_ingreso_new (
+                    id, camion_id, anio, mes, cliente, km_realizados,
+                    ingreso_ruta, ingreso_chofer_adicional, ingreso_extra,
+                    ingreso_autopista, incremento_combustible, observaciones
+                )
+                SELECT
+                    id, camion_id, anio, mes,
+                    CASE WHEN lower(coalesce(cliente, '')) = 'xpo' THEN 'xpo' ELSE 'seur' END,
+                    km_realizados, ingreso_ruta, ingreso_chofer_adicional, ingreso_extra,
+                    ingreso_autopista, incremento_combustible, observaciones
+                FROM registro_ingreso
+            ''')
+        else:
+            cur.execute('''
+                INSERT INTO registro_ingreso_new (
+                    id, camion_id, anio, mes, cliente, km_realizados,
+                    ingreso_ruta, ingreso_chofer_adicional, ingreso_extra,
+                    ingreso_autopista, incremento_combustible, observaciones
+                )
+                SELECT
+                    id, camion_id, anio, mes, 'seur', km_realizados,
+                    ingreso_ruta, ingreso_chofer_adicional, ingreso_extra,
+                    ingreso_autopista, incremento_combustible, observaciones
+                FROM registro_ingreso
+            ''')
+        cur.execute('DROP TABLE registro_ingreso')
+        cur.execute('ALTER TABLE registro_ingreso_new RENAME TO registro_ingreso')
+        conn.commit()
+        cur.execute('PRAGMA foreign_keys=ON')
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def _migrar_registros_mixtos_analisis():
     inspector = inspect(db.engine)
@@ -2437,6 +2574,7 @@ def _migrar_registros_mixtos_analisis():
                 camion_id=old.camion_id,
                 anio=old.anio,
                 mes=old.mes,
+                cliente='seur',
                 km_realizados=old.km_realizados or 0,
                 ingreso_ruta=old.ingreso_ruta or 0,
                 ingreso_chofer_adicional=old.ingreso_chofer_adicional or 0,
@@ -3396,10 +3534,20 @@ def _acumular_ingreso_en(totales, ing):
     totales['incremento'] += ing.incremento_combustible or 0
     totales['ingresos_totales'] += ingresos + (ing.incremento_combustible or 0)
 
+def _desglose_ingreso_vacio():
+    return {
+        'ingreso_ruta': 0.0,
+        'ingreso_chofer_adicional': 0.0,
+        'ingreso_extra': 0.0,
+        'ingreso_autopista': 0.0,
+    }
+
 def _km_flota_por_mes(anio):
-    """Km de cada camión y total de flota por mes, para repartir bonus/HVO."""
+    """Km SEUR de cada camión y de la flota, para repartir bonus/HVO. Los de XPO no cuentan."""
     por_mes = {}
     for ing in RegistroIngreso.query.filter_by(anio=anio).all():
+        if not ing.cuenta_para_reparto():
+            continue
         datos = por_mes.setdefault(ing.mes, {'total': 0.0, 'por_camion': {}})
         km = ing.km_realizados or 0
         datos['por_camion'][ing.camion_id] = datos['por_camion'].get(ing.camion_id, 0) + km
@@ -3407,7 +3555,7 @@ def _km_flota_por_mes(anio):
     return por_mes
 
 def _aplicar_repartos(por_clave, anio, camion_id=0, camiones_por_id=None, mes=0):
-    """Reparte bonus calidad y suplemento HVO del mes a razón de los km de cada camión."""
+    """Reparte bonus calidad y suplemento HVO del mes según los km SEUR de cada camión."""
     consulta = RegistroReparto.query.filter_by(anio=anio)
     if mes:
         consulta = consulta.filter_by(mes=mes)
@@ -3443,7 +3591,7 @@ def _aplicar_repartos(por_clave, anio, camion_id=0, camiones_por_id=None, mes=0)
                     'camion': camiones_por_id.get(cid),
                     'mes': reparto.mes,
                     'totales': dict(TOTALES_VACIOS),
-                    'ingreso': None,
+                    'desglose': _desglose_ingreso_vacio(),
                 }
             por_clave[key]['totales'][campo] = (por_clave[key]['totales'].get(campo) or 0) + share
 
@@ -3539,14 +3687,18 @@ def _resumen_analisis(anio, mes=0, camion_id=0):
                 'camion': camiones_por_id.get(camion_id_val),
                 'mes': mes_val,
                 'totales': dict(TOTALES_VACIOS),
-                'ingreso': None,
+                'desglose': _desglose_ingreso_vacio(),
             }
         return por_clave[key]
 
     for ing in ingresos:
         bucket = clave_bucket(ing.camion_id, ing.mes)
         bucket['camion'] = ing.camion
-        bucket['ingreso'] = ing
+        desglose = bucket['desglose']
+        desglose['ingreso_ruta'] += ing.ingreso_ruta or 0
+        desglose['ingreso_chofer_adicional'] += ing.ingreso_chofer_adicional or 0
+        desglose['ingreso_extra'] += ing.ingreso_extra or 0
+        desglose['ingreso_autopista'] += ing.ingreso_autopista or 0
         _acumular_ingreso_en(bucket['totales'], ing)
 
     for g in repostajes:
@@ -3569,7 +3721,7 @@ def _resumen_analisis(anio, mes=0, camion_id=0):
         metricas = metricas_desde_totales(bucket['totales'], precio_oficial)
         filas.append({
             'camion': bucket['camion'],
-            'ingreso': bucket['ingreso'],
+            'desglose': bucket.get('desglose') or _desglose_ingreso_vacio(),
             'mes': mes_val,
             'mes_nombre': MESES_NOMBRE.get(mes_val, mes_val),
             **metricas,
@@ -3739,41 +3891,42 @@ def _guardar_ingreso_analisis(registro=None):
         if not camion or mes < 1 or mes > 12:
             flash('Selecciona un camión y un mes válidos.', 'error')
         else:
-            existente = RegistroIngreso.query.filter_by(camion_id=camion_id, anio=anio, mes=mes).first()
-            if existente and (registro is None or existente.id != registro.id):
-                flash('Ya hay ingresos de ese camión y mes. Se ha abierto para editarlos.', 'error')
-                return redirect(url_for('editar_ingreso_analisis', id=existente.id))
-            if registro is None:
-                registro = RegistroIngreso()
-                db.session.add(registro)
-            registro.camion_id = camion_id
-            registro.anio = anio
-            registro.mes = mes
-            registro.ingreso_ruta = parsear_float_form(request.form.get('ingreso_ruta'))
-            registro.ingreso_chofer_adicional = parsear_float_form(request.form.get('ingreso_chofer_adicional'))
-            registro.ingreso_extra = parsear_float_form(request.form.get('ingreso_extra'))
-            registro.ingreso_autopista = parsear_float_form(request.form.get('ingreso_autopista'))
-            registro.incremento_combustible = parsear_float_form(request.form.get('incremento_combustible'))
-            registro.observaciones = (request.form.get('observaciones') or '').strip() or None
-            db.session.flush()
-            _guardar_tramos_ingreso(registro)
-            km_form = (request.form.get('km_realizados') or '').strip()
-            if km_form:
-                registro.km_realizados = parsear_float_form(km_form)
-            elif registro.tramos:
-                registro.km_realizados = sum(t.km_tramo() for t in registro.tramos)
+            cliente = (request.form.get('cliente') or '').strip().lower()
+            if cliente not in dict(CLIENTES_INGRESO):
+                flash('Indica si el ingreso es de SEUR o de XPO.', 'error')
             else:
-                registro.km_realizados = 0
-            try:
-                commit_seguro("guardar ingresos de análisis")
-                flash('Ingresos guardados correctamente.', 'success')
-                return redirect(url_for('analisis', anio=anio, mes=mes, camion_id=camion_id))
-            except IntegrityError:
-                db.session.rollback()
-                flash('Ya existe un registro de ingresos para ese camión y mes.', 'error')
-            except Exception as e:
-                db.session.rollback()
-                flash(f'Error al guardar los ingresos: {str(e)}', 'error')
+                if registro is None:
+                    registro = RegistroIngreso()
+                    db.session.add(registro)
+                registro.camion_id = camion_id
+                registro.anio = anio
+                registro.mes = mes
+                registro.cliente = cliente
+                registro.ingreso_ruta = parsear_float_form(request.form.get('ingreso_ruta'))
+                registro.ingreso_chofer_adicional = parsear_float_form(request.form.get('ingreso_chofer_adicional'))
+                registro.ingreso_extra = parsear_float_form(request.form.get('ingreso_extra'))
+                registro.ingreso_autopista = parsear_float_form(request.form.get('ingreso_autopista'))
+                registro.incremento_combustible = parsear_float_form(request.form.get('incremento_combustible'))
+                registro.observaciones = (request.form.get('observaciones') or '').strip() or None
+                db.session.flush()
+                _guardar_tramos_ingreso(registro)
+                km_form = (request.form.get('km_realizados') or '').strip()
+                if km_form:
+                    registro.km_realizados = parsear_float_form(km_form)
+                elif registro.tramos:
+                    registro.km_realizados = sum(t.km_tramo() for t in registro.tramos)
+                else:
+                    registro.km_realizados = 0
+                try:
+                    commit_seguro("guardar ingresos de análisis")
+                    flash('Ingreso guardado. Puedes añadir otro del mismo camión y mes.', 'success')
+                    return redirect(url_for('analisis', anio=anio, mes=mes, camion_id=camion_id))
+                except IntegrityError:
+                    db.session.rollback()
+                    flash('No se pudo guardar el ingreso por un conflicto en los datos.', 'error')
+                except Exception as e:
+                    db.session.rollback()
+                    flash(f'Error al guardar los ingresos: {str(e)}', 'error')
     return render_template(
         'analisis_ingreso_form.html',
         registro=registro,
@@ -3783,6 +3936,7 @@ def _guardar_ingreso_analisis(registro=None):
         anio_pref=parsear_entero_form(request.args.get('anio'), hoy.year),
         mes_pref=parsear_entero_form(request.args.get('mes'), hoy.month),
         camion_pref=parsear_entero_form(request.args.get('camion_id'), 0),
+        clientes=CLIENTES_INGRESO,
         rutas=_rutas_para_formulario(registro),
         tramos=list(registro.tramos) if registro else [],
     )
@@ -3925,12 +4079,20 @@ def _guardar_gasoil_analisis(registro=None):
             if registro is None:
                 registro = RegistroGasoil()
                 db.session.add(registro)
-            con_iva = parsear_float_form(request.form.get('gasto_con_iva'))
             bonificacion = parsear_float_form(request.form.get('bonificacion'))
             iva_porcentaje = parsear_float_form(request.form.get('iva_porcentaje'), 21)
             if iva_porcentaje not in TIPOS_IVA:
                 iva_porcentaje = 21
-            sin_iva, neto = calcular_gasoil_desglose(con_iva, bonificacion, iva_porcentaje)
+            base_iva = (request.form.get('base_iva') or 'con').strip().lower()
+            texto_con = (request.form.get('gasto_con_iva') or '').strip()
+            texto_sin = (request.form.get('gasto_sin_iva') or '').strip()
+            if base_iva == 'sin' or (texto_sin and not texto_con):
+                con_iva, sin_iva, neto = calcular_gasoil_desde_sin_iva(
+                    parsear_float_form(texto_sin), bonificacion, iva_porcentaje,
+                )
+            else:
+                con_iva = parsear_float_form(texto_con)
+                sin_iva, neto = calcular_gasoil_desglose(con_iva, bonificacion, iva_porcentaje)
             registro.camion_id = camion_id
             registro.anio = anio
             registro.mes = mes
@@ -4119,7 +4281,7 @@ def precios_oficiales_gasoil():
 @app.route('/analisis/repartos', methods=['GET', 'POST'])
 @login_required
 def repartos_analisis():
-    """Bonus calidad y suplemento HVO mensuales, repartidos por km de cada camión."""
+    """Bonus calidad y suplemento HVO mensuales, repartidos por km SEUR de cada camión."""
     hoy = datetime.today()
     anio = parsear_entero_form(request.values.get('anio', hoy.year), hoy.year)
     mes_prev = parsear_entero_form(request.values.get('mes', hoy.month), hoy.month)
@@ -4142,7 +4304,7 @@ def repartos_analisis():
                     else:
                         db.session.add(RegistroReparto(anio=anio, mes=mes, tipo=tipo, importe=importe))
             commit_seguro("guardar bonus calidad y suplemento HVO")
-            flash('Repartos guardados. Se aplican a cada camión según sus km del mes.', 'success')
+            flash('Repartos guardados. Se aplican según los km SEUR de cada camión. Los de XPO no cuentan.', 'success')
             return redirect(url_for('repartos_analisis', anio=anio, mes=mes_prev))
         except Exception as e:
             db.session.rollback()
@@ -4194,6 +4356,198 @@ def repartos_analisis():
         km_json=km_json,
         años_disponibles=años_disponibles,
         meses=MESES_NOMBRE,
+    )
+
+def _precio_sin_iva(precio_con_iva):
+    if not precio_con_iva:
+        return None
+    return precio_con_iva / (1 + IVA_GASOIL)
+
+def _mes_anterior(anio, mes):
+    if mes <= 1:
+        return anio - 1, 12
+    return anio, mes - 1
+
+def _calcular_clausula_seur(precio_referencia, precio_mes, km):
+    """Recargo SEUR: (precio mes − referencia), ambos con IVA, × 28 / 100 × km."""
+    referencia = precio_referencia or 0
+    actual = precio_mes or 0
+    diferencia = actual - referencia
+    coeficiente = diferencia * CLAUSULA_SEUR_FACTOR / 100
+    kilometros = km or 0
+    return {
+        'precio_referencia_sin_iva': _precio_sin_iva(referencia),
+        'precio_mes_sin_iva': _precio_sin_iva(actual),
+        'diferencia': diferencia,
+        'centimos': diferencia * 100,
+        'coeficiente': coeficiente,
+        'km': kilometros,
+        'importe': coeficiente * kilometros,
+    }
+
+def _km_seur_mes(anio, mes, camiones_por_id):
+    datos = (_km_flota_por_mes(anio).get(mes) or {'total': 0.0, 'por_camion': {}})
+    lineas = []
+    for cid, km in datos['por_camion'].items():
+        if not km:
+            continue
+        camion = camiones_por_id.get(cid)
+        lineas.append({
+            'nombre': camion.etiqueta() if camion else str(cid),
+            'matricula': camion.matricula if camion else '',
+            'km': km,
+        })
+    lineas.sort(key=lambda x: x['matricula'])
+    return datos['total'] or 0, lineas
+
+def _importe_por_camion(importe, lineas):
+    utiles = [linea for linea in lineas if (linea['km'] or 0) > 0]
+    total_km = sum(linea['km'] for linea in utiles)
+    if total_km <= 0:
+        return []
+    asignado = 0.0
+    resultado = []
+    for i, linea in enumerate(utiles):
+        if i == len(utiles) - 1:
+            parte = round((importe or 0) - asignado, 2)
+        else:
+            parte = round((importe or 0) * linea['km'] / total_km, 2)
+            asignado += parte
+        resultado.append({**linea, 'importe': parte})
+    return resultado
+
+def _ultima_referencia_seur(anio, mes):
+    """Referencia del mes anterior, o la última guardada si ese mes no tiene."""
+    a, m = anio, mes
+    for _ in range(36):
+        a, m = _mes_anterior(a, m)
+        registro = ClausulaSeur.query.filter_by(anio=a, mes=m).first()
+        if registro and (registro.precio_referencia or 0) > 0:
+            return registro
+    return None
+
+def _texto_con_enlaces(texto):
+    from markupsafe import Markup, escape
+    if not texto:
+        return Markup('')
+    partes = []
+    ultimo = 0
+    for coincidencia in re.finditer(r'https?://[^\s<>"]+', texto):
+        partes.append(str(escape(texto[ultimo:coincidencia.start()])))
+        url = coincidencia.group(0)
+        partes.append(
+            f'<a href="{escape(url)}" target="_blank" rel="noopener">{escape(url)}</a>'
+        )
+        ultimo = coincidencia.end()
+    partes.append(str(escape(texto[ultimo:])))
+    return Markup(''.join(partes).replace('\n', '<br>'))
+
+@app.route('/analisis/clausula', methods=['GET', 'POST'])
+@login_required
+def clausula_analisis():
+    """Comprobación de la cláusula de combustible. SEUR y XPO se guardan aparte."""
+    hoy = datetime.today()
+    anio = parsear_entero_form(request.values.get('anio', hoy.year), hoy.year)
+    mes = parsear_entero_form(request.values.get('mes', hoy.month), hoy.month)
+    cliente = (request.values.get('cliente') or 'seur').strip().lower()
+    if mes < 1 or mes > 12:
+        mes = hoy.month
+    if cliente not in ('seur', 'xpo'):
+        cliente = 'seur'
+    borrador = None
+
+    if request.method == 'POST' and cliente == 'seur':
+        precio_referencia = parsear_float_form(request.form.get('precio_referencia'), None)
+        precio_mes = parsear_float_form(request.form.get('precio_mes'), None)
+        texto = (request.form.get('texto_referencia') or '').strip() or None
+        if precio_referencia is None or precio_referencia <= 0 or precio_mes is None or precio_mes <= 0:
+            flash('Indica el precio de referencia y el precio del mes, ambos con IVA.', 'error')
+            borrador = {
+                'precio_referencia': precio_referencia,
+                'precio_mes': precio_mes,
+                'texto': texto or '',
+            }
+        else:
+            registro = ClausulaSeur.query.filter_by(anio=anio, mes=mes).first()
+            if registro is None:
+                registro = ClausulaSeur(anio=anio, mes=mes)
+                db.session.add(registro)
+            registro.precio_referencia = precio_referencia
+            registro.precio_mes = precio_mes
+            registro.texto_referencia = texto
+            try:
+                commit_seguro("guardar cláusula SEUR")
+                flash(f'Cláusula SEUR de {MESES_NOMBRE[mes]} {anio} guardada.', 'success')
+                return redirect(url_for('clausula_analisis', anio=anio, mes=mes, cliente='seur'))
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error al guardar la cláusula: {str(e)}', 'error')
+                borrador = {
+                    'precio_referencia': precio_referencia,
+                    'precio_mes': precio_mes,
+                    'texto': texto or '',
+                }
+
+    camiones = {c.id: c for c in Camion.query.order_by(Camion.matricula).all()}
+    km_anio = _km_flota_por_mes(anio)
+    registros = {r.mes: r for r in ClausulaSeur.query.filter_by(anio=anio).all()}
+    actual = registros.get(mes)
+    propuesta = None if actual else _ultima_referencia_seur(anio, mes)
+    if borrador is not None:
+        precio_ref = borrador['precio_referencia']
+        precio_mes_valor = borrador['precio_mes']
+        texto_referencia = borrador['texto']
+        propuesta = None
+    else:
+        precio_ref = actual.precio_referencia if actual else (propuesta.precio_referencia if propuesta else None)
+        precio_mes_valor = actual.precio_mes if actual else None
+        texto_referencia = actual.texto_referencia if actual else (propuesta.texto_referencia if propuesta else '')
+    km_total, lineas_km = _km_seur_mes(anio, mes, camiones)
+    calculo = _calcular_clausula_seur(precio_ref or 0, precio_mes_valor or 0, km_total) if (precio_ref and precio_mes_valor) else None
+    if calculo:
+        lineas_km = _importe_por_camion(calculo['importe'], lineas_km)
+
+    historial = []
+    for numero in range(1, 13):
+        guardado = registros.get(numero)
+        km_mes = (km_anio.get(numero) or {}).get('total') or 0
+        calculo_mes = None
+        if guardado and (guardado.precio_referencia or 0) > 0 and (guardado.precio_mes or 0) > 0:
+            calculo_mes = _calcular_clausula_seur(guardado.precio_referencia, guardado.precio_mes, km_mes)
+        historial.append({
+            'mes': numero,
+            'nombre': MESES_NOMBRE[numero],
+            'registro': guardado,
+            'km': km_mes,
+            'calculo': calculo_mes,
+        })
+
+    años_disponibles = sorted({
+        row[0] for row in (
+            list(db.session.query(RegistroIngreso.anio).distinct().all())
+            + list(db.session.query(ClausulaSeur.anio).distinct().all())
+        ) if row[0]
+    } | {anio, hoy.year, hoy.year - 1, hoy.year + 1})
+
+    return render_template(
+        'analisis_clausula.html',
+        anio=anio,
+        mes=mes,
+        cliente=cliente,
+        meses=MESES_NOMBRE,
+        años_disponibles=años_disponibles,
+        actual=actual,
+        propuesta=propuesta,
+        precio_ref=precio_ref,
+        precio_mes_valor=precio_mes_valor,
+        texto_referencia=texto_referencia or '',
+        texto_html=_texto_con_enlaces(texto_referencia or ''),
+        km_total=km_total,
+        lineas_km=lineas_km,
+        calculo=calculo,
+        historial=historial,
+        iva_pct=int(IVA_GASOIL * 100),
+        factor=CLAUSULA_SEUR_FACTOR,
     )
 
 # Función para migrar la base de datos y agregar nuevos campos

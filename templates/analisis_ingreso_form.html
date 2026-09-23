@@ -63,13 +63,25 @@
                                    value="{{ registro.anio if registro else anio_pref }}" required>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label for="mes">Mes</label>
-                        <select id="mes" name="mes" required>
-                            {% for num, nombre in meses.items() %}
-                            <option value="{{ num }}" {% if (registro and registro.mes == num) or (not registro and num == mes_pref) %}selected{% endif %}>{{ nombre }}</option>
-                            {% endfor %}
-                        </select>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="mes">Mes</label>
+                            <select id="mes" name="mes" required>
+                                {% for num, nombre in meses.items() %}
+                                <option value="{{ num }}" {% if (registro and registro.mes == num) or (not registro and num == mes_pref) %}selected{% endif %}>{{ nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="cliente">Cliente</label>
+                            <select id="cliente" name="cliente" required>
+                                <option value="">Selecciona</option>
+                                {% for codigo, nombre in clientes %}
+                                <option value="{{ codigo }}" {% if registro and registro.cliente == codigo %}selected{% endif %}>{{ nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="help">Puedes guardar varios ingresos del mismo camión y mes. Los km de XPO no entran en el bonus ni en el HVO: solo cuentan los de SEUR.</div>
+                        </div>
                     </div>
                 </fieldset>
                 <fieldset>

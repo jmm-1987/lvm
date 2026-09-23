@@ -150,6 +150,7 @@
                 <a href="{{ url_for('nuevo_gasoil_analisis', anio=anio, mes=mes, camion_id=camion_id) }}" class="btn btn-primary">+ Gasoil</a>
                 <a href="{{ url_for('grafica_analisis', anio=anio, mes=mes, camion_id=camion_id) }}" class="btn" style="background:#8e24aa;">Gráfica</a>
                 <a href="{{ url_for('repartos_analisis', anio=anio, mes=mes) }}" class="btn btn-success">Bonus / HVO</a>
+                <a href="{{ url_for('clausula_analisis', anio=anio, mes=mes) }}" class="btn" style="background:#ef6c00;">Cláusula</a>
                 <a href="{{ url_for('listar_rutas_analisis') }}" class="btn btn-info">Rutas</a>
                 <a href="{{ url_for('listar_camiones_analisis') }}" class="btn btn-info">Camiones</a>
                 <a href="{{ url_for('precios_oficiales_gasoil', anio=anio) }}" class="btn btn-warning">Precio oficial gasoil</a>
@@ -222,12 +223,12 @@
 
             <h3>Repercusión del bonus y el HVO</h3>
             {% if repercusiones %}
-            <p class="muted">Se guarda un importe por mes para toda la flota. La parte de cada camión es importe × (sus km ÷ km de todos) y solo entra en el mes filtrado. <a href="{{ url_for('repartos_analisis', anio=anio, mes=mes) }}">Cambiar importes</a></p>
+            <p class="muted">Se guarda un importe por mes para toda la flota. La parte de cada camión es importe × (sus km SEUR ÷ km SEUR de todos). Los km de XPO no entran. <a href="{{ url_for('repartos_analisis', anio=anio, mes=mes) }}">Cambiar importes</a></p>
             {% for grupo in repercusiones %}
             <div class="table-wrap">
                 <p>
                     <strong>{{ grupo.mes_nombre }}</strong>
-                    · flota {{ "%.0f"|format(grupo.km_total) }} km
+                    · flota {{ "%.0f"|format(grupo.km_total) }} km SEUR
                     · bonus {{ "%.2f"|format(grupo.bonus_mes) }} €
                     · HVO {{ "%.2f"|format(grupo.hvo_mes) }} €
                 </p>
@@ -236,7 +237,7 @@
                     <thead>
                         <tr>
                             <th>Camión</th>
-                            <th>Km</th>
+                            <th>Km SEUR</th>
                             <th>% flota</th>
                             <th>Bonus</th>
                             <th>HVO</th>
@@ -264,7 +265,7 @@
                     </tbody>
                 </table>
                 {% else %}
-                <p class="muted">Este mes tiene importe, pero aún no hay km en los ingresos: no se puede repartir.</p>
+                <p class="muted">Este mes tiene importe, pero aún no hay km de SEUR: no se puede repartir.</p>
                 {% endif %}
             </div>
             {% endfor %}
@@ -326,6 +327,7 @@
                         <tr>
                             <th>Camión</th>
                             <th>Mes</th>
+                            <th>Cliente</th>
                             <th>Km</th>
                             <th>Ruta</th>
                             <th>Chofer ad.</th>
@@ -340,6 +342,12 @@
                         <tr>
                             <td>{{ ing.camion.etiqueta() }}</td>
                             <td>{{ meses[ing.mes] }}</td>
+                            <td>
+                                {{ ing.cliente_etiqueta() }}
+                                {% if not ing.cuenta_para_reparto() %}
+                                <div class="muted">no entra en bonus ni HVO</div>
+                                {% endif %}
+                            </td>
                             <td>
                                 {{ "%.0f"|format(ing.km_realizados or 0) }}
                                 {% if ing.tramos %}
@@ -357,7 +365,7 @@
                             <td class="{% if (ing.incremento_combustible or 0) < 0 %}negative{% elif (ing.incremento_combustible or 0) > 0 %}positive{% endif %}">{{ "%.2f"|format(ing.incremento_combustible or 0) }}</td>
                             <td>
                                 <a href="{{ url_for('editar_ingreso_analisis', id=ing.id) }}" class="btn btn-small">Editar</a>
-                                <form action="{{ url_for('borrar_ingreso_analisis', id=ing.id) }}" method="post" style="display:inline;" onsubmit="return confirm('¿Borrar estos ingresos?');">
+                                <form action="{{ url_for('borrar_ingreso_analisis', id=ing.id) }}" method="post" style="display:inline;" onsubmit="return confirm('¿Borrar este ingreso?');">
                                     <button type="submit" class="btn btn-danger">Borrar</button>
                                 </form>
                             </td>
@@ -457,10 +465,10 @@
                             <td>{% if fila.camion %}{{ fila.camion.etiqueta() }}{% else %}—{% endif %}</td>
                             <td>{{ fila.mes_nombre }}</td>
                             <td>{{ "%.0f"|format(fila.km) }}</td>
-                            <td>{{ "%.2f"|format(fila.ingreso.ingreso_ruta if fila.ingreso else 0) }}</td>
-                            <td>{{ "%.2f"|format(fila.ingreso.ingreso_chofer_adicional if fila.ingreso else 0) }}</td>
-                            <td>{{ "%.2f"|format(fila.ingreso.ingreso_extra if fila.ingreso else 0) }}</td>
-                            <td>{{ "%.2f"|format(fila.ingreso.ingreso_autopista if fila.ingreso else 0) }}</td>
+                            <td>{{ "%.2f"|format(fila.desglose.ingreso_ruta) }}</td>
+                            <td>{{ "%.2f"|format(fila.desglose.ingreso_chofer_adicional) }}</td>
+                            <td>{{ "%.2f"|format(fila.desglose.ingreso_extra) }}</td>
+                            <td>{{ "%.2f"|format(fila.desglose.ingreso_autopista) }}</td>
                             <td class="{% if fila.incremento < 0 %}negative{% elif fila.incremento > 0 %}positive{% endif %}">{{ "%.2f"|format(fila.incremento) }}</td>
                             <td class="{% if (fila.bonus_calidad or 0) < 0 %}negative{% elif (fila.bonus_calidad or 0) > 0 %}positive{% endif %}">{{ "%.2f"|format(fila.bonus_calidad or 0) }}</td>
                             <td class="{% if (fila.suplemento_hvo or 0) < 0 %}negative{% elif (fila.suplemento_hvo or 0) > 0 %}positive{% endif %}">{{ "%.2f"|format(fila.suplemento_hvo or 0) }}</td>
@@ -505,7 +513,7 @@
             {% else %}
             <div class="empty">
                 <h3>No hay registros para este filtro</h3>
-                <p class="muted">Añade ingresos y tantos gasoil como gasolineras o tipos uses.</p>
+                <p class="muted">Añade tantos ingresos como trabajos (SEUR o XPO) y tantos gasoil como gasolineras o tipos uses.</p>
                 <p>
                     <a href="{{ url_for('nuevo_ingreso_analisis') }}" class="btn btn-success">+ Ingresos</a>
                     <a href="{{ url_for('nuevo_gasoil_analisis') }}" class="btn btn-primary">+ Gasoil</a>
