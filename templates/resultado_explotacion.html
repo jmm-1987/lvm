@@ -270,6 +270,14 @@
             <div class="diferencia" style="margin-top:8px; text-align:left; font-weight:bold;">
              Gastos fijos: <span>{{ '%.2f'|format(diferencia) }} €</span>
             </div>
+            <div class="diferencia" style="margin-top:8px; text-align:left; font-weight:bold; font-size:1.05em; color:#ef6c00;">
+                Resultado solo con gasoil: <span class="{% if resultado_solo_gasoil is not none and resultado_solo_gasoil < 0 %}negativo{% endif %}">{{ '%.2f'|format(resultado_solo_gasoil) }} €</span>
+                <span style="font-weight:normal; color:#546e7a;"> · Repercusión sobre la facturación: {% if repercusion_gasoil is not none %}{{ '%.2f'|format(repercusion_gasoil) }} %{% else %}—{% endif %}</span>
+            </div>
+            <div class="diferencia" style="margin-top:8px; text-align:left; font-weight:bold; font-size:1.05em; color:#6d4c41;">
+                Resultado con gasoil y personal: <span class="{% if resultado_gasoil_personal is not none and resultado_gasoil_personal < 0 %}negativo{% endif %}">{{ '%.2f'|format(resultado_gasoil_personal) }} €</span>
+                <span style="font-weight:normal; color:#546e7a;"> · Repercusión sobre la facturación: {% if repercusion_gasoil_personal is not none %}{{ '%.2f'|format(repercusion_gasoil_personal) }} %{% else %}—{% endif %}</span>
+            </div>
             <div class="diferencia" style="font-size:1.2em; color:#1976d2; margin-top:15px; text-align:left; font-weight:bold;">
                 Resultado de la explotación: <span class="{% if resultado_explotacion is not none and resultado_explotacion < 0 %}negativo{% endif %}">{{ '%.2f'|format(resultado_explotacion) }} €</span>
             </div>

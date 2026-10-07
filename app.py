@@ -835,6 +835,10 @@ def resultado_explotacion():
     suma_resto = 0
     grafica_meses = []
     grafica_categorias = []
+    resultado_solo_gasoil = None
+    repercusion_gasoil = None
+    resultado_gasoil_personal = None
+    repercusion_gasoil_personal = None
 
     if request.method == 'POST':
         tipo_periodo = request.form.get('tipo_periodo', 'mes')
@@ -991,6 +995,32 @@ def resultado_explotacion():
         resultado = suma_7
         diferencia = suma_resto  # Gastos fijos (todas las cuentas que no son 7)
         resultado_explotacion = suma_7 - suma_resto
+
+        # Desglose: facturación menos solo gasoil, y menos gasoil + personal.
+        # Solo entran cuentas que ya forman parte de este informe.
+        importe_gasoil = 0.0
+        importe_personal = 0.0
+        for d in detalle:
+            cuenta = str(d['cuenta']).strip()
+            nombre = (d['nombre'] or '').lower()
+            importe = d['importe'] or 0.0
+            es_gasoil = (
+                cuenta == '62800000001'
+                or any(clave in nombre for clave in ('carburante', 'gasoil', 'gasoleo', 'gasóleo'))
+            )
+            es_dietas = cuenta == '649000000002' or 'dieta' in nombre
+            es_ss = 'seguridad social' in nombre or cuenta.startswith('642')
+            es_sueldos = cuenta.startswith('640') or 'sueldo' in nombre or 'salario' in nombre
+            if es_gasoil:
+                importe_gasoil += importe
+            elif es_dietas or es_ss or es_sueldos:
+                importe_personal += importe
+
+        resultado_solo_gasoil = suma_7 - importe_gasoil
+        resultado_gasoil_personal = suma_7 - importe_gasoil - importe_personal
+        if suma_7:
+            repercusion_gasoil = importe_gasoil / suma_7 * 100
+            repercusion_gasoil_personal = (importe_gasoil + importe_personal) / suma_7 * 100
         
         # Calcular importes de las cuentas del resultado neto y agregarlas al detalle
         suma_resultado_neto = 0
@@ -1076,7 +1106,11 @@ def resultado_explotacion():
         total_ingresos=suma_7,
         total_gastos=suma_resto,
         grafica_meses=grafica_meses,
-        grafica_categorias=grafica_categorias
+        grafica_categorias=grafica_categorias,
+        resultado_solo_gasoil=resultado_solo_gasoil,
+        repercusion_gasoil=repercusion_gasoil,
+        resultado_gasoil_personal=resultado_gasoil_personal,
+        repercusion_gasoil_personal=repercusion_gasoil_personal
     )
 
 @app.route('/iva', methods=['GET', 'POST'])
